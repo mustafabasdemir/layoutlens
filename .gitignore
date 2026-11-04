@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+playwright-report/
+test-results/
+layoutlens-report/
+.layoutlens/
+report.json
+.verify-phase*/
+.env
+.env.*
+!.env.example
+*.tmp
+.vite/

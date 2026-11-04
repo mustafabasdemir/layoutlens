@@ -1,0 +1,250 @@
+/** Standard viewports for responsive layout checks (mobile, tablet, desktop). */
+export const VIEWPORT_WIDTHS = [390, 768, 1440] as const;
+
+export type ViewportWidth = (typeof VIEWPORT_WIDTHS)[number];
+
+export interface ViewportLabel {
+  width: ViewportWidth;
+  label: string;
+}
+
+export const VIEWPORT_LABELS: readonly ViewportLabel[] = [
+  { width: 390, label: "mobile" },
+  { width: 768, label: "tablet" },
+  { width: 1440, label: "desktop" },
+] as const;
+
+export type FindingSeverity = "high" | "medium" | "low";
+
+export interface ElementBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+import type {
+  ClassificationCounts,
+  ClippingContext,
+  ExcludedFinding,
+  FindingClassification,
+  RelatedElement,
+  ViewportAnalysis,
+} from "./classification.js";
+
+/** Element responsible for horizontal overflow at a viewport. */
+export interface OverflowFinding {
+  tagName: string;
+  selector: string;
+  severity: FindingSeverity;
+  /** Internal scroll overflow (scrollWidth − clientWidth). */
+  overflowPx: number;
+  /** Pixels extending past the layout viewport horizontally. */
+  documentContributionPx: number;
+  scrollWidth: number;
+  clientWidth: number;
+  boundingBox: ElementBoundingBox;
+  /** DOM depth from body (body = 0). Used for deduplication only. */
+  depth: number;
+  /** Elements the selector matches in the page; more than 1 means it is ambiguous. */
+  selectorMatches: number;
+  classification: FindingClassification;
+  /** Evidence-based explanation of the classification. */
+  reason: string;
+  /** Pixels this element adds to the page's horizontal scroll range (0 when it cannot). */
+  scrollContributionPx: number;
+  /** Part of the box that is actually painted inside the viewport; null when none is. */
+  visibleBox: ElementBoundingBox | null;
+  /** Computed CSS position. */
+  position: string;
+  /** The element or an ancestor has a CSS transform. */
+  transformed: boolean;
+  /** visibility: hidden or opacity: 0 — still occupies layout space. */
+  invisible: boolean;
+  clipping?: ClippingContext;
+  /** Three or more equally sized children laid out in a row (typical carousel track). */
+  pattern?: "horizontal-track";
+  /** Other elements past the edge that share this root cause. */
+  related: RelatedElement[];
+  relatedCount: number;
+}
+
+/** @deprecated Alias kept for compatibility — use OverflowFinding. */
+export type OverflowElement = OverflowFinding;
+
+export interface ViewportScanResult {
+  width: ViewportWidth;
+  label: string;
+  viewportHeight: number;
+  documentScrollWidth: number;
+  documentClientWidth: number;
+  hasHorizontalOverflow: boolean;
+  overflowPx: number;
+  /** Root-cause overflow elements after false-positive filtering. */
+  findings: OverflowFinding[];
+  /** Same as findings (Phase 1 field name). */
+  overflowingElements: OverflowFinding[];
+  /** Elements past the edge that were judged intentional (clipped, offscreen, hidden). */
+  excluded: ExcludedFinding[];
+  analysis: ViewportAnalysis;
+  /** Relative path to viewport screenshot inside an HTML report bundle. */
+  screenshot?: string;
+}
+
+export interface ScanSummary {
+  viewportIssueCount: number;
+  findingCount: number;
+  bySeverity: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  byClassification: ClassificationCounts;
+  /** Excluded groups across all viewports. */
+  excludedCount: number;
+  /** True when any viewport hit a finding, excluded-group, or candidate limit. */
+  truncated: boolean;
+  visualFailures?: number;
+}
+
+export interface ScanResult {
+  url: string;
+  scannedAt: string;
+  viewports: ViewportScanResult[];
+  /** Viewports with document-level horizontal overflow (exit code). */
+  issueCount: number;
+  summary: ScanSummary;
+  /** Present when `--baseline-dir` is used during scan. */
+  visual?: import("./visual.js").VisualRegressionResult;
+}
+
+export interface ScanOptions {
+  url: string;
+  /** Default viewport height for all widths. */
+  viewportHeight?: number;
+  headless?: boolean;
+  /** When set, captures per-viewport PNG screenshots under `directory/screenshots/`. */
+  artifacts?: ScanArtifactOptions;
+  /** Compare captures against this baseline directory (requires screenshots). */
+  baselineDirectory?: string;
+  visualConfig?: import("./visual.js").VisualRegressionConfig;
+  /** Called as real scan stages start and finish. */
+  onProgress?: (event: ScanProgressEvent) => void;
+  /** Aborting closes the browser and rejects with an AbortError. */
+  signal?: AbortSignal;
+}
+
+export type ScanProgressEvent =
+  | { type: "browser-launched" }
+  | { type: "viewport-started"; width: ViewportWidth; index: number; total: number }
+  | { type: "viewport-completed"; width: ViewportWidth; index: number; total: number; findingCount: number }
+  | { type: "visual-compare-started" }
+  | { type: "visual-compare-completed"; failedCount: number };
+
+export interface ScanArtifactOptions {
+  directory: string;
+  /** Compare screenshots to this baseline directory (manifest + screenshots). */
+  baselineDirectory?: string;
+  visualConfig?: import("./visual.js").VisualRegressionConfig;
+  /** Write diff PNGs under `directory/visual/`. */
+  visualDiffs?: boolean;
+}
+
+export function getViewportLabel(width: ViewportWidth): string {
+  const found = VIEWPORT_LABELS.find((v) => v.width === width);
+  return found?.label ?? `${width}px`;
+}
+
+export {
+  CLASSIFICATION_LABELS,
+  EXCLUSION_LABELS,
+  FINDING_CLASSIFICATIONS,
+  capSeverity,
+  countClassifications,
+  emptyClassificationCounts,
+  type Box,
+  type ClassificationCounts,
+  type ClippingContext,
+  type ExcludedFinding,
+  type ExclusionReason,
+  type FindingClassification,
+  type RelatedElement,
+  type ViewportAnalysis,
+} from "./classification.js";
+export {
+  classifySeverity,
+  countSeverities,
+  emptySeverityCounts,
+  SEVERITY_ORDER,
+} from "./severity.js";
+export type { SeverityCounts } from "./severity.js";
+export {
+  REPORT_SCHEMA_VERSION,
+  type JsonReport,
+  type JsonReportFinding,
+  type JsonReportSummary,
+  type JsonReportViewport,
+} from "./report.js";
+export { serializeJsonReport, scanResultToJsonReport } from "./report-serialize.js";
+export {
+  BASELINE_MANIFEST_VERSION,
+  DEFAULT_STABILITY,
+  DEFAULT_VISUAL_CONFIG,
+  type BaselineManifest,
+  type BaselineManifestEntry,
+  type ScreenshotStabilityOptions,
+  type VisualComparisonStatus,
+  type VisualMaskRegion,
+  type VisualRegressionConfig,
+  type VisualRegressionResult,
+  type VisualViewportMask,
+  type ViewportVisualComparison,
+} from "./visual.js";
+export { mergeVisualConfig } from "./visual-config.js";
+export type {
+  JsonReportBoundingBox,
+  JsonReportVisualCompare,
+  JsonReportVisualCompareView,
+  JsonReportVisualSummary,
+} from "./report.js";
+export {
+  DARK_PALETTE,
+  LIGHT_PALETTE,
+  FONT_MONO,
+  FONT_SANS,
+  designTokensCss,
+  type ThemePalette,
+} from "./design-tokens.js";
+export {
+  mapBoxToScreenshot,
+  type ImageGeometry,
+  type OverlayMapping,
+  type OverlayRectPercent,
+  type ViewportGeometry,
+} from "./overlay-geometry.js";
+export {
+  SCAN_API_PREFIX,
+  SCAN_API_SERVICE,
+  SCAN_FILE_PATTERN,
+  progressPercent,
+  scanFileUrl,
+  type CreateScanRequestBody,
+  type ScanApiErrorBody,
+  type ScanJobBaseline,
+  type ScanJobProgress,
+  type ScanJobState,
+  type ScanJobView,
+  type ScanListResponse,
+  type ScanServiceInfo,
+  type ScanServiceLimits,
+} from "./scan-api.js";
+export {
+  FINDING_KIND_LABELS,
+  diagnosticHints,
+  explainFinding,
+  findingKinds,
+  overlayBoxFor,
+  primaryFindingKind,
+  screenshotEvidenceNote,
+  type FindingKind,
+} from "./finding-insights.js";

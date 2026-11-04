@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 1 — genuine document overflow</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      header, main { padding: 16px; }
+      /* A promo row that never wraps: each tile fits, but the row pushes later tiles off the page. */
+      .promo-row { display: flex; gap: 16px; }
+      .promo-tile { flex: 0 0 220px; height: 120px; background: #ffd8a8; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <header><h1>Weekly offers</h1></header>
+    <main>
+      <div class="promo-row">
+        <div class="promo-tile">Offer A</div>
+        <div class="promo-tile">Offer B</div>
+        <div class="promo-tile">Offer C</div>
+        <div class="promo-tile">Offer D</div>
+      </div>
+    </main>
+  </body>
+</html>

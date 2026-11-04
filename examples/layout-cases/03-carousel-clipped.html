@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 3 — properly clipped carousel</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      main { padding: 16px; }
+      .carousel { overflow: hidden; border-radius: 8px; }
+      .carousel-track { display: flex; transform: translateX(0); }
+      .slide { flex: 0 0 100%; height: 180px; display: grid; place-items: center; background: #d0ebff; }
+      .slide:nth-child(even) { background: #b2f2bb; }
+      .slide img { width: 80px; height: 80px; background: #fff; display: block; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Featured</h1>
+      <div id="hero-carousel" class="carousel">
+        <div class="carousel-track">
+          <div class="slide"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+          <div class="slide"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+          <div class="slide"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+          <div class="slide"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+          <div class="slide"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

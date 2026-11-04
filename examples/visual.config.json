@@ -1,0 +1,11 @@
+{
+  "pixelmatchThreshold": 0.1,
+  "maxDiffPixels": 500,
+  "maxDiffPixelRatio": 0.002,
+  "masks": [],
+  "stability": {
+    "waitAfterLoadMs": 250,
+    "disableAnimations": true,
+    "reducedMotion": true
+  }
+}

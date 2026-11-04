@@ -1,0 +1,6 @@
+{
+  "name": "@layoutlens/example-broken-layout",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Intentionally broken responsive layout for manual LayoutLens scans"
+}

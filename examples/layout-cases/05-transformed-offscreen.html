@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 5 — transformed offscreen slides and drawer</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      main { padding: 16px; }
+      .fader { position: relative; height: 200px; overflow: hidden; }
+      .fader-slide { position: absolute; inset: 0; background: #e5dbff; }
+      .fader-slide:nth-child(2) { transform: translateX(100%); }
+      .fader-slide:nth-child(3) { transform: translateX(200%); }
+      .fader-slide:nth-child(4) { transform: translateX(-100%); }
+      /* Closed off-canvas drawer, slid out with a transform. */
+      .drawer { position: fixed; top: 0; right: 0; width: 300px; height: 100vh; background: #fff; box-shadow: 0 0 20px #0003; transform: translateX(100%); }
+      .drawer a { display: block; padding: 12px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Gallery</h1>
+      <div id="fader" class="fader">
+        <div class="fader-slide">A</div>
+        <div class="fader-slide">B</div>
+        <div class="fader-slide">C</div>
+        <div class="fader-slide">D</div>
+      </div>
+    </main>
+    <nav id="drawer" class="drawer" aria-hidden="true">
+      <a href="#">Home</a><a href="#">Shop</a><a href="#">Contact</a>
+    </nav>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LayoutLens — Broken Layout Example</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <h1>Broken Layout Demo</h1>
+      <p>Intentional responsive issues for LayoutLens Phase 1.</p>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p>This hero is fine on desktop but uses a fixed wide banner.</p>
+      </section>
+
+      <!-- Fixed 1200px width causes overflow on mobile/tablet -->
+      <div id="wide-banner" class="wide-banner">
+        <span>I am 1200px wide — I overflow narrow viewports</span>
+      </div>
+
+      <section class="cards">
+        <article class="card">Card A</article>
+        <article class="card">Card B</article>
+        <article class="card card-nowrap">
+          This card refuses to wrap its long unbroken content string
+          ..................................................
+        </article>
+      </section>
+
+      <pre class="code-block">const x = "fixed min-width 900px on small screens";</pre>
+    </main>
+
+    <footer class="site-footer">
+      <small>LayoutLens example — not for production</small>
+    </footer>
+  </body>
+</html>

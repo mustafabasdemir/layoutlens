@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 10 — many findings, one root cause (plus one unrelated issue)</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      main { padding: 16px; }
+      /* Root cause: one fixed-width wrapper; every card inside it overflows because of it. */
+      .product-grid { width: 1000px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .product-card { height: 120px; background: #fff3bf; }
+      .product-card img { display: block; width: 100%; height: 60px; background: #ffe066; }
+      /* Unrelated issue elsewhere on the page. */
+      .newsletter-input { display: block; width: 520px; margin-top: 24px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Shop</h1>
+      <div id="product-grid" class="product-grid">
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+        <div class="product-card"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /></div>
+      </div>
+      <input id="newsletter" class="newsletter-input" type="email" placeholder="you@example.com" />
+    </main>
+  </body>
+</html>

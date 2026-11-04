@@ -1,0 +1,23 @@
+{
+  "name": "layoutlens",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first CLI for detecting responsive layout issues",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "lint": "pnpm -r run lint",
+    "cli": "node packages/cli/dist/index.js",
+    "studio": "pnpm --filter @layoutlens/studio dev",
+    "studio:build": "pnpm --filter @layoutlens/studio build",
+    "studio:preview": "pnpm --filter @layoutlens/studio preview",
+    "studio:serve": "pnpm --filter @layoutlens/studio build && node packages/server/dist/cli.js --static-dir apps/studio/dist",
+    "server": "node packages/server/dist/cli.js",
+    "browser:install": "pnpm --filter @layoutlens/core exec playwright install chromium"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

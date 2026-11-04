@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 7 — nested scroll containers</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      main { padding: 16px; }
+      .table-wrap { overflow-x: auto; border: 1px solid #ccc; }
+      table { min-width: 900px; border-collapse: collapse; }
+      td, th { border: 1px solid #ddd; padding: 6px; }
+      .outer-scroll { overflow-x: auto; margin-top: 16px; }
+      .outer-inner { width: 700px; }
+      .inner-scroll { overflow-x: scroll; width: 300px; }
+      .inner-content { width: 1200px; height: 40px; background: #ffe3e3; }
+      pre { overflow-x: auto; background: #222; color: #eee; padding: 12px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Report</h1>
+      <div id="table-wrap" class="table-wrap">
+        <table>
+          <tr><th>Region</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th>Total</th></tr>
+          <tr><td>North</td><td>1</td><td>2</td><td>3</td><td>4</td><td>10</td></tr>
+        </table>
+      </div>
+      <div id="outer-scroll" class="outer-scroll">
+        <div class="outer-inner">
+          <div class="inner-scroll"><div class="inner-content">nested</div></div>
+        </div>
+      </div>
+      <pre>const veryLongLine = "this line is much longer than any phone screen and scrolls inside the pre";</pre>
+    </main>
+  </body>
+</html>

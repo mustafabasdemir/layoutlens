@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 9 — offscreen absolutely positioned elements</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      .hero { position: relative; height: 220px; padding: 16px; background: #f1f3f5; }
+      .hero-clipped { overflow: hidden; }
+      .blob { position: absolute; top: 40px; right: -160px; width: 260px; height: 160px; border-radius: 50%; background: #74c0fc; }
+      .offscreen-label { position: absolute; left: -9999px; }
+    </style>
+  </head>
+  <body>
+    <section class="hero hero-clipped">
+      <h1>Clipped hero</h1>
+      <div id="blob-clipped" class="blob"></div>
+    </section>
+    <section class="hero">
+      <h2>Leaky hero</h2>
+      <!-- Bug: same decoration, but this hero does not clip it, so the page scrolls sideways. -->
+      <div id="blob-leak" class="blob"></div>
+      <span class="offscreen-label">Screen-reader label</span>
+    </section>
+  </body>
+</html>

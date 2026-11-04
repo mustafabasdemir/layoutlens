@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0",
+  "url": "file:///D:/dev/layoutlens/examples/broken-layout/index.html",
+  "urlKey": "d129824f383099cd",
+  "viewportHeight": 844,
+  "createdAt": "2026-11-04T19:01:23.663Z",
+  "updatedAt": "2026-11-04T19:01:23.663Z",
+  "entries": [
+    {
+      "width": 390,
+      "relativePath": "screenshots/viewport-390.png",
+      "sha256": "b5077a4b8a6782b0bca4078661946f39fc52c2e6b1b58fad2db7db94629d07b2",
+      "widthPx": 390,
+      "heightPx": 844
+    },
+    {
+      "width": 768,
+      "relativePath": "screenshots/viewport-768.png",
+      "sha256": "10e04bfbdb967b6771a75202408dc147666426ee0b862339fb0b3b340520c4fa",
+      "widthPx": 768,
+      "heightPx": 844
+    },
+    {
+      "width": 1440,
+      "relativePath": "screenshots/viewport-1440.png",
+      "sha256": "6a7be743406b7855be257b02f60cf2954a3f4bac908411524362be49c4ceea7f",
+      "widthPx": 1440,
+      "heightPx": 844
+    }
+  ]
+}

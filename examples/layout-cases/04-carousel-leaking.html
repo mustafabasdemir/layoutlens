@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 4 — carousel incorrectly expanding the document</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      main { padding: 16px; }
+      /* Bug: the carousel viewport forgot overflow: hidden, so every slide widens the page. */
+      .carousel { border-radius: 8px; }
+      .carousel-track { display: flex; }
+      .slide { flex: 0 0 100%; height: 180px; background: #d0ebff; }
+      .slide:nth-child(even) { background: #b2f2bb; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Featured</h1>
+      <div id="leaky-carousel" class="carousel">
+        <div class="carousel-track">
+          <div class="slide">1</div>
+          <div class="slide">2</div>
+          <div class="slide">3</div>
+          <div class="slide">4</div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

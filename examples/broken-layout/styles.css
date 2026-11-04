@@ -1,0 +1,72 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #f6f7f9;
+}
+
+.site-header,
+.site-footer {
+  padding: 1rem 1.25rem;
+  background: #fff;
+  border-bottom: 1px solid #e2e4e9;
+}
+
+.site-footer {
+  border-bottom: none;
+  border-top: 1px solid #e2e4e9;
+  margin-top: 2rem;
+}
+
+main {
+  padding: 1rem 1.25rem;
+}
+
+.hero {
+  margin-bottom: 1.5rem;
+}
+
+.wide-banner {
+  width: 1200px;
+  padding: 1rem;
+  background: #ff6b6b;
+  color: #fff;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.card {
+  flex: 1 1 200px;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #e2e4e9;
+  border-radius: 8px;
+}
+
+.card-nowrap {
+  white-space: nowrap;
+  min-width: 480px;
+}
+
+.code-block {
+  min-width: 900px;
+  padding: 1rem;
+  background: #222;
+  color: #eee;
+  border-radius: 8px;
+  overflow-x: auto;
+}

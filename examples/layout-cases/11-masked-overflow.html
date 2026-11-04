@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case 11 — overflow masked by body { overflow-x: hidden }</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; overflow-x: hidden; }
+      main { padding: 16px; }
+      /* The page can't scroll sideways, but the right part of this banner is simply cut off. */
+      .announcement { width: 560px; padding: 12px; background: #ffc9c9; box-sizing: border-box; }
+      .decor { position: absolute; top: 0; left: 120%; width: 200px; height: 200px; background: #eee; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>News</h1>
+      <div id="announcement" class="announcement">Free shipping on all orders this week — terms apply</div>
+    </main>
+    <div class="decor"></div>
+  </body>
+</html>
