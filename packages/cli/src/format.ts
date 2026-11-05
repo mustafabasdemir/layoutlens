@@ -1,6 +1,8 @@
 import {
+  ADVANCED_CATEGORY_LABELS,
   CLASSIFICATION_LABELS,
   EXCLUSION_LABELS,
+  type AdvancedFinding,
   type OverflowFinding,
   type ScanResult,
   type ViewportScanResult,
@@ -38,6 +40,12 @@ function formatFinding(el: OverflowFinding): string {
       : `${el.documentContributionPx}px past edge`;
   const related = el.relatedCount > 0 ? `, +${el.relatedCount} related element${el.relatedCount === 1 ? "" : "s"}` : "";
   return `      • [${severityLabel(el.severity)}] ${cls} ${el.selector} (${impact}, box ${el.boundingBox.width}×${el.boundingBox.height}${related})`;
+}
+
+function formatAdvancedFinding(f: AdvancedFinding): string {
+  const cls = CLASSIFICATION_LABELS[f.classification].toUpperCase();
+  const cat = ADVANCED_CATEGORY_LABELS[f.category];
+  return `      • [${severityLabel(f.severity)}] ${cls} ${cat}: ${f.selector}`;
 }
 
 function formatViewportBlock(v: ViewportScanResult): string[] {
@@ -92,6 +100,21 @@ function formatViewportBlock(v: ViewportScanResult): string[] {
     }
   }
 
+  const adv = v.advancedFindings ?? [];
+  const aa = v.advancedAnalysis;
+  if (adv.length > 0) {
+    lines.push(`    ${DIM}Responsive findings:${RESET}`);
+    for (const f of adv.slice(0, MAX_LISTED)) lines.push(formatAdvancedFinding(f));
+    if (adv.length > MAX_LISTED) {
+      lines.push(`      ${DIM}… and ${adv.length - MAX_LISTED} more advanced finding(s) in the report${RESET}`);
+    }
+  }
+  if (aa && aa.findingsOmitted > 0) {
+    lines.push(
+      `    ${YELLOW}Truncated: ${aa.findingsOmitted} responsive finding(s) beyond the ${aa.findingLimit}-finding limit.${RESET}`,
+    );
+  }
+
   return lines;
 }
 
@@ -106,6 +129,12 @@ export function formatScanResult(result: ScanResult): string {
     `${DIM}Findings:${RESET} ${s.findingCount} (${s.byClassification.confirmed} confirmed, ${s.byClassification.potential} potential, ${s.byClassification.insufficientEvidence} insufficient evidence; ${s.bySeverity.high} high, ${s.bySeverity.medium} med, ${s.bySeverity.low} low)`,
   );
   lines.push(`${DIM}Excluded as intentional:${RESET} ${s.excludedCount} group(s)`);
+  if (s.advancedFindingCount !== undefined && s.advancedFindingCount > 0) {
+    const c = s.byAdvancedCategory;
+    lines.push(
+      `${DIM}Responsive (advisory):${RESET} ${s.advancedFindingCount} (${c?.overlap ?? 0} overlap, ${c?.textClipping ?? 0} text, ${c?.offscreenControl ?? 0} offscreen, ${c?.touchTarget ?? 0} touch) — does not change exit code`,
+    );
+  }
   if (s.truncated) {
     lines.push(`${YELLOW}Results are truncated — see the per-viewport notes below.${RESET}`);
   }

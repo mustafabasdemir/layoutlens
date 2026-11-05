@@ -8,6 +8,9 @@ import {
   type FindingSeverity,
   type JsonReport,
   type JsonReportBoundingBox,
+  ADVANCED_FINDING_CATEGORIES,
+  type AdvancedFindingCategory,
+  type JsonReportAdvancedFinding,
   type JsonReportFinding,
   type JsonReportViewport,
   type JsonReportVisualCompare,
@@ -187,6 +190,47 @@ function parseVisual(raw: unknown, path: string): JsonReportVisualCompare | unde
   return out;
 }
 
+function parseAdvancedFinding(raw: unknown, path: string): JsonReportAdvancedFinding {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const category = raw.category;
+  if (
+    typeof category !== "string" ||
+    !(ADVANCED_FINDING_CATEGORIES as readonly string[]).includes(category)
+  ) {
+    throw new ReportValidationError(`${path}.category is invalid.`);
+  }
+  const classification = raw.classification;
+  if (
+    typeof classification !== "string" ||
+    !(FINDING_CLASSIFICATIONS as readonly string[]).includes(classification)
+  ) {
+    throw new ReportValidationError(`${path}.classification is invalid.`);
+  }
+  const severity = raw.severity;
+  if (typeof severity !== "string" || !SEVERITIES.includes(severity as FindingSeverity)) {
+    throw new ReportValidationError(`${path}.severity is invalid.`);
+  }
+  const out: JsonReportAdvancedFinding = {
+    id: str(raw.id, `${path}.id`),
+    category: category as AdvancedFindingCategory,
+    selector: str(raw.selector, `${path}.selector`),
+    tagName: str(raw.tagName, `${path}.tagName`),
+    severity: severity as FindingSeverity,
+    classification: classification as FindingClassification,
+    reason: str(raw.reason, `${path}.reason`),
+    guidance: str(raw.guidance, `${path}.guidance`),
+    boundingBox: parseBox(raw.boundingBox, `${path}.boundingBox`),
+  };
+  const sm = optionalNum(raw.selectorMatches);
+  if (sm !== undefined) out.selectorMatches = sm;
+  if (raw.visibleBox === null) out.visibleBox = null;
+  else {
+    const vb = parseBox(raw.visibleBox, `${path}.visibleBox`);
+    if (vb) out.visibleBox = vb;
+  }
+  return out;
+}
+
 function parseViewport(raw: unknown, index: number): JsonReportViewport {
   const path = `viewports[${index}]`;
   if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
@@ -205,6 +249,11 @@ function parseViewport(raw: unknown, index: number): JsonReportViewport {
   };
   const excluded = parseExcluded(raw.excluded, `${path}.excluded`);
   if (excluded) vp.excluded = excluded;
+  if (Array.isArray(raw.advancedFindings)) {
+    vp.advancedFindings = raw.advancedFindings.map((f, i) =>
+      parseAdvancedFinding(f, `${path}.advancedFindings[${i}]`),
+    );
+  }
   const analysis = parseAnalysis(raw.analysis, `${path}.analysis`);
   if (analysis) vp.analysis = analysis;
   const screenshot = optionalStr(raw.screenshot);
@@ -262,6 +311,18 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
   const excludedCount = optionalNum(summary.excludedCount);
   if (excludedCount !== undefined) report.summary.excludedCount = excludedCount;
   if (typeof summary.truncated === "boolean") report.summary.truncated = summary.truncated;
+  const advCount = optionalNum(summary.advancedFindingCount);
+  if (advCount !== undefined) report.summary.advancedFindingCount = advCount;
+  if (typeof summary.advancedTruncated === "boolean") report.summary.advancedTruncated = summary.advancedTruncated;
+  const byAdv = summary.byAdvancedCategory;
+  if (isObject(byAdv)) {
+    report.summary.byAdvancedCategory = {
+      overlap: num(byAdv.overlap, "summary.byAdvancedCategory.overlap"),
+      textClipping: num(byAdv.textClipping, "summary.byAdvancedCategory.textClipping"),
+      offscreenControl: num(byAdv.offscreenControl, "summary.byAdvancedCategory.offscreenControl"),
+      touchTarget: num(byAdv.touchTarget, "summary.byAdvancedCategory.touchTarget"),
+    };
+  }
   return report;
 }
 

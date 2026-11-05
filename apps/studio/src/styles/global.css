@@ -627,7 +627,8 @@ a { color: inherit; }
 .related-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--ll-text-xs); max-height: 200px; overflow-y: auto; }
 .related-list li { display: grid; gap: 2px; padding: 6px 8px; border-radius: var(--ll-radius-sm); background: var(--ll-surface-elevated); min-width: 0; }
 .related-list code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.related-list .mono { color: var(--ll-text-muted); }
+.advanced-item { display: grid; gap: 4px; padding: var(--ll-space-2); border-radius: var(--ll-radius-sm); background: var(--ll-surface-elevated); min-width: 0; list-style: none; }
+.advanced-list { margin-top: var(--ll-space-2); }
 
 .empty-card, .summary-empty { padding: var(--ll-space-2); }
 .findings-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ll-space-2); }

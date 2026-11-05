@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Overlap — blocked button</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; min-height: 120vh; }
+    #target { position: fixed; bottom: 24px; left: 24px; z-index: 1; padding: 12px 20px; }
+    #blocker {
+      position: fixed; bottom: 16px; left: 16px; width: 140px; height: 64px;
+      background: rgba(20, 20, 20, 0.92); z-index: 50; pointer-events: auto;
+    }
+  </style>
+</head>
+<body>
+  <main><p>Scrollable page content.</p></main>
+  <button type="button" id="target">Primary action</button>
+  <div id="blocker" aria-hidden="true"></div>
+</body>
+</html>

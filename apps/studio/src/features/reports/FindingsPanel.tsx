@@ -2,7 +2,9 @@ import type { KeyboardEvent } from "react";
 import { CheckCircle2, SearchX } from "lucide-react";
 import {
   EXCLUSION_LABELS,
+  ADVANCED_CATEGORY_LABELS,
   FINDING_KIND_LABELS,
+  explainAdvancedFinding,
   explainFinding,
   findingKinds,
   type FindingKind,
@@ -89,6 +91,35 @@ export function ExcludedList({ viewport }: { viewport: JsonReportViewport }) {
         ))}
       </ul>
       {omitted > 0 ? <p className="finding-meta">{omitted} more excluded group(s) are beyond the {viewport.analysis?.excludedLimit}-group limit.</p> : null}
+    </details>
+  );
+}
+
+export function AdvancedFindingsList({ viewport }: { viewport: JsonReportViewport }) {
+  const items = viewport.advancedFindings ?? [];
+  if (items.length === 0) return null;
+  return (
+    <details className="excluded-list advanced-list" data-testid="advanced-findings-list" open>
+      <summary>
+        Responsive analysis <span className="count-pill">{items.length}</span>
+        <span className="excluded-sub">Overlap, text clipping, offscreen controls, touch targets — advisory; exit code unchanged</span>
+      </summary>
+      <ul className="finding-list">
+        {items.map((f) => (
+          <li key={f.id} className="advanced-item" data-advanced-category={f.category}>
+            <span className="finding-top">
+              <Badge>{ADVANCED_CATEGORY_LABELS[f.category]}</Badge>
+              {f.classification ? <ClassificationBadge classification={f.classification} /> : null}
+              <SeverityBadge severity={f.severity} />
+            </span>
+            <code className="finding-selector" title={f.selector}>{f.selector}</code>
+            <span className="finding-text">{explainAdvancedFinding(f)}</span>
+            {f.overlap ? (
+              <span className="finding-meta">Blocked by {f.overlap.blockerSelector}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </details>
   );
 }
@@ -226,6 +257,7 @@ export function FindingsPanel({
           })}
         </ul>
       )}
+      <AdvancedFindingsList viewport={viewport} />
       <ExcludedList viewport={viewport} />
     </section>
   );

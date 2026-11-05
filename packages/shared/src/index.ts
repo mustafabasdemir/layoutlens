@@ -87,6 +87,9 @@ export interface ViewportScanResult {
   /** Elements past the edge that were judged intentional (clipped, offscreen, hidden). */
   excluded: ExcludedFinding[];
   analysis: ViewportAnalysis;
+  /** Phase 8 responsive findings (do not affect horizontal overflow exit code). */
+  advancedFindings?: import("./responsive.js").AdvancedFinding[];
+  advancedAnalysis?: import("./responsive.js").AdvancedViewportAnalysis;
   /** Relative path to viewport screenshot inside an HTML report bundle. */
   screenshot?: string;
 }
@@ -104,6 +107,10 @@ export interface ScanSummary {
   excludedCount: number;
   /** True when any viewport hit a finding, excluded-group, or candidate limit. */
   truncated: boolean;
+  /** Phase 8 advanced findings across viewports (not in findingCount). */
+  advancedFindingCount?: number;
+  byAdvancedCategory?: import("./responsive.js").AdvancedCategoryCounts;
+  advancedTruncated?: boolean;
   visualFailures?: number;
 }
 
@@ -132,6 +139,8 @@ export interface ScanOptions {
   onProgress?: (event: ScanProgressEvent) => void;
   /** Aborting closes the browser and rejects with an AbortError. */
   signal?: AbortSignal;
+  /** Phase 8 detector toggles and thresholds. */
+  detection?: Partial<import("./responsive.js").DetectionConfig>;
 }
 
 export type ScanProgressEvent =
@@ -181,6 +190,7 @@ export type { SeverityCounts } from "./severity.js";
 export {
   REPORT_SCHEMA_VERSION,
   type JsonReport,
+  type JsonReportAdvancedFinding,
   type JsonReportFinding,
   type JsonReportSummary,
   type JsonReportViewport,
@@ -238,6 +248,29 @@ export {
   type ScanServiceInfo,
   type ScanServiceLimits,
 } from "./scan-api.js";
+export {
+  ADVANCED_CATEGORY_LABELS,
+  ADVANCED_FINDING_CATEGORIES,
+  DEFAULT_DETECTION_CONFIG,
+  countAdvancedCategories,
+  emptyAdvancedCategoryCounts,
+  mergeDetectionConfig,
+  type AdvancedCategoryCounts,
+  type AdvancedFinding,
+  type AdvancedFindingCategory,
+  type AdvancedViewportAnalysis,
+  type DetectionConfig,
+  type OffscreenControlEvidence,
+  type OverlapEvidence,
+  type TextClipEvidence,
+  type TouchTargetEvidence,
+} from "./responsive.js";
+export {
+  advancedCategoryLabel,
+  diagnosticHintsAdvanced,
+  explainAdvancedFinding,
+  overlayBoxForAdvanced,
+} from "./advanced-insights.js";
 export {
   FINDING_KIND_LABELS,
   diagnosticHints,

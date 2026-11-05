@@ -19,6 +19,8 @@ Free, open-source, **local-first** tooling for detecting responsive layout issue
 
 **Phase 7** — **Evidence-based classification** (`confirmed`, `potential`, `insufficient-evidence`), **excluded** overflow candidates (carousels, scroll containers, offscreen/hidden content) with reasons, **visible-only overlays** for partly clipped elements, and matching fields in JSON/HTML reports and Studio.
 
+**Phase 8** — **Advanced responsive analysis** (overlap, text clipping, offscreen controls, touch targets) as separate **advisory** findings in JSON/CLI/Studio; horizontal overflow **exit codes unchanged**. Configure via `ScanOptions.detection` / future CLI flags.
+
 ## Requirements
 
 - Node.js 20+

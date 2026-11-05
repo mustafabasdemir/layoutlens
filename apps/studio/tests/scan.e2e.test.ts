@@ -101,7 +101,7 @@ describe("Scan Website runs a real local scan", () => {
     expect(await progressCard(page).textContent()).toContain("no accessibility findings are reported");
 
     // Completed scans feed the Overview summary from the real report.
-    await expect.poll(async () => page.getByTestId("stat-total-findings").textContent()).toBe(String(findings));
+    await expect.poll(async () => page.getByTestId("stat-total-findings").textContent(), { timeout: 15_000 }).toBe(String(findings));
     expect(await page.getByTestId("recent-scans").locator(".report-row").count()).toBe(1);
 
     await page.getByRole("button", { name: "View results" }).click();
@@ -115,13 +115,13 @@ describe("Scan Website runs a real local scan", () => {
       "768",
       "1440",
     ]);
-    expect(await page.locator(".finding-card").filter({ hasText: "#wide-banner" }).count()).toBe(1);
+    expect(await page.locator("button.finding-card").filter({ hasText: "#wide-banner" }).count()).toBe(1);
     expect(await page.getByTestId("count-confirmed").textContent()).toBe(String(findings));
-    expect(await page.locator('.finding-card[data-classification="confirmed"]').count()).toBe(
-      await page.locator(".finding-card").count(),
+    expect(await page.locator('button.finding-card[data-classification="confirmed"]').count()).toBe(
+      await page.locator("button.finding-card").count(),
     );
     const tabBadge = await page.locator('#ws-tab-390 .device-badge').textContent();
-    expect(tabBadge).toBe(String(await page.locator(".finding-card").count()));
+    expect(tabBadge).toBe(String(await page.locator("button.finding-card").count()));
     await page.locator(".finding-card").filter({ hasText: "#wide-banner" }).click();
     expect(await page.getByTestId("detail-reason").textContent()).toContain("no ancestor clips it");
     expect(await page.locator('.shot-box.is-selected').count()).toBe(1);

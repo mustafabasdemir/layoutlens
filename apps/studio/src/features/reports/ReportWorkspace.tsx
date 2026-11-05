@@ -64,6 +64,9 @@ export function ReportHeader({ loaded, onClose }: { loaded: LoadedReport; onClos
             <div><dt>Potential</dt><dd data-testid="count-potential">{s.byClassification.potential}</dd></div>
             <div><dt>Insufficient evidence</dt><dd data-testid="count-insufficient">{s.byClassification.insufficientEvidence}</dd></div>
             <div><dt>Excluded as intentional</dt><dd data-testid="count-excluded">{s.excludedCount ?? 0}</dd></div>
+            {s.advancedFindingCount !== undefined ? (
+              <div><dt>Responsive (advisory)</dt><dd data-testid="count-advanced">{s.advancedFindingCount}</dd></div>
+            ) : null}
           </dl>
         ) : null}
         {s.truncated ? (

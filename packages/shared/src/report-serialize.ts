@@ -18,6 +18,15 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
       byClassification: { ...result.summary.byClassification },
       excludedCount: result.summary.excludedCount,
       truncated: result.summary.truncated,
+      ...(result.summary.advancedFindingCount !== undefined
+        ? { advancedFindingCount: result.summary.advancedFindingCount }
+        : {}),
+      ...(result.summary.byAdvancedCategory
+        ? { byAdvancedCategory: { ...result.summary.byAdvancedCategory } }
+        : {}),
+      ...(result.summary.advancedTruncated !== undefined
+        ? { advancedTruncated: result.summary.advancedTruncated }
+        : {}),
       ...(result.summary.visualFailures !== undefined
         ? { visualFailures: result.summary.visualFailures }
         : {}),
@@ -76,6 +85,19 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
           samples: e.samples.map((s) => ({ ...s, boundingBox: { ...s.boundingBox } })),
         })),
         analysis: { ...v.analysis },
+        ...(v.advancedFindings?.length
+          ? {
+              advancedFindings: v.advancedFindings.map((f) => ({
+                ...f,
+                boundingBox: { ...f.boundingBox },
+                visibleBox: f.visibleBox ? { ...f.visibleBox } : null,
+                ...(f.clipping ? { clipping: { ...f.clipping, boundingBox: { ...f.clipping.boundingBox } } } : {}),
+              })),
+            }
+          : v.advancedFindings
+            ? { advancedFindings: [] }
+            : {}),
+        ...(v.advancedAnalysis ? { advancedAnalysis: { ...v.advancedAnalysis } } : {}),
       };
     }),
     ...(result.visual

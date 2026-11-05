@@ -627,6 +627,9 @@ ${designTokensCss()}
           items.push(["Insufficient evidence", String(cls.insufficientEvidence)]);
           items.push(["Excluded (intentional)", String(s.excludedCount || 0)]);
         }
+        if (s.advancedFindingCount != null) {
+          items.push(["Responsive (advisory)", String(s.advancedFindingCount)]);
+        }
         items = items.concat([
           ["Visual fails", String(report.summary && report.summary.visualFailures != null ? report.summary.visualFailures : (report.visual ? report.visual.failedCount : 0))],
           ["High", String(report.summary && report.summary.bySeverity ? report.summary.bySeverity.high : 0)],

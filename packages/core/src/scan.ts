@@ -5,6 +5,7 @@ import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 import {
   VIEWPORT_WIDTHS,
+  countAdvancedCategories,
   countClassifications,
   countSeverities,
   getViewportLabel,
@@ -18,6 +19,7 @@ import {
   computeDocumentOverflow,
   detectHorizontalOverflow,
 } from "./overflow.js";
+import { detectResponsiveIssues } from "./detect-responsive.js";
 import { captureViewportScreenshot } from "./screenshot.js";
 import { runVisualRegression } from "./visual-regression.js";
 
@@ -28,6 +30,7 @@ function buildViewportResult(
   width: (typeof VIEWPORT_WIDTHS)[number],
   viewportHeight: number,
   overflowData: Awaited<ReturnType<typeof detectHorizontalOverflow>>,
+  responsiveData: Awaited<ReturnType<typeof detectResponsiveIssues>>,
   screenshot?: string,
 ): ViewportScanResult {
   const docOverflow = computeDocumentOverflow(
@@ -49,6 +52,8 @@ function buildViewportResult(
     overflowingElements: findings,
     excluded: overflowData.excluded,
     analysis: overflowData.analysis,
+    advancedFindings: responsiveData.findings,
+    advancedAnalysis: responsiveData.analysis,
   };
 
   if (screenshot !== undefined) {
@@ -60,6 +65,7 @@ function buildViewportResult(
 
 export function summarizeViewports(viewports: readonly ViewportScanResult[]): Omit<ScanSummary, "visualFailures"> {
   const allFindings = viewports.flatMap((v) => v.findings);
+  const allAdvanced = viewports.flatMap((v) => v.advancedFindings ?? []);
   const issueCount = viewports.filter((v) => v.hasHorizontalOverflow).length;
   return {
     viewportIssueCount: issueCount,
@@ -68,8 +74,16 @@ export function summarizeViewports(viewports: readonly ViewportScanResult[]): Om
     byClassification: countClassifications(allFindings),
     excludedCount: viewports.reduce((n, v) => n + v.excluded.length, 0),
     truncated: viewports.some(
-      (v) => v.analysis.findingsOmitted > 0 || v.analysis.excludedOmitted > 0 || v.analysis.candidatesOmitted > 0,
+      (v) =>
+        v.analysis.findingsOmitted > 0 ||
+        v.analysis.excludedOmitted > 0 ||
+        v.analysis.candidatesOmitted > 0 ||
+        (v.advancedAnalysis?.findingsOmitted ?? 0) > 0 ||
+        (v.advancedAnalysis?.candidatesOmitted ?? 0) > 0,
     ),
+    advancedFindingCount: allAdvanced.length,
+    byAdvancedCategory: countAdvancedCategories(allAdvanced),
+    advancedTruncated: viewports.some((v) => (v.advancedAnalysis?.findingsOmitted ?? 0) > 0),
   };
 }
 
@@ -90,6 +104,7 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
     visualConfig,
     onProgress,
     signal,
+    detection,
   } = options;
 
   let workDir = artifacts?.directory;
@@ -134,6 +149,7 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
       });
 
       const overflowData = await detectHorizontalOverflow(page, width);
+      const responsiveData = await detectResponsiveIssues(page, width, viewportHeight, detection);
       let screenshot: string | undefined;
       if (workDir) {
         screenshot = await captureViewportScreenshot(
@@ -144,7 +160,13 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         );
       }
 
-      const viewportResult = buildViewportResult(width, viewportHeight, overflowData, screenshot);
+      const viewportResult = buildViewportResult(
+        width,
+        viewportHeight,
+        overflowData,
+        responsiveData,
+        screenshot,
+      );
       viewports.push(viewportResult);
       onProgress?.({
         type: "viewport-completed",

@@ -6,6 +6,15 @@ import type {
   RelatedElement,
   ViewportAnalysis,
 } from "./classification.js";
+import type {
+  AdvancedCategoryCounts,
+  AdvancedFindingCategory,
+  AdvancedViewportAnalysis,
+  OffscreenControlEvidence,
+  OverlapEvidence,
+  TextClipEvidence,
+  TouchTargetEvidence,
+} from "./responsive.js";
 import type { FindingSeverity, SeverityCounts } from "./severity.js";
 
 export const REPORT_SCHEMA_VERSION = "1.0" as const;
@@ -46,6 +55,27 @@ export interface JsonReportFinding {
   relatedCount?: number;
 }
 
+/** Phase 8 responsive findings (separate from horizontal overflow `findings`). */
+export interface JsonReportAdvancedFinding {
+  id: string;
+  category: AdvancedFindingCategory;
+  selector: string;
+  tagName: string;
+  severity: FindingSeverity;
+  classification: FindingClassification;
+  reason: string;
+  guidance: string;
+  boundingBox: JsonReportBoundingBox;
+  visibleBox?: JsonReportBoundingBox | null;
+  selectorMatches?: number;
+  invisible?: boolean;
+  clipping?: ClippingContext;
+  overlap?: OverlapEvidence;
+  textClip?: TextClipEvidence;
+  offscreenControl?: OffscreenControlEvidence;
+  touchTarget?: TouchTargetEvidence;
+}
+
 export interface JsonReportViewport {
   width: number;
   label: string;
@@ -55,6 +85,9 @@ export interface JsonReportViewport {
   hasHorizontalOverflow: boolean;
   overflowPx: number;
   findings: JsonReportFinding[];
+  /** Phase 8 — overlap, text clipping, offscreen controls, touch targets. */
+  advancedFindings?: JsonReportAdvancedFinding[];
+  advancedAnalysis?: AdvancedViewportAnalysis;
   excluded?: ExcludedFinding[];
   analysis?: ViewportAnalysis;
   /** Relative path to a viewport screenshot (HTML bundles only). */
@@ -89,6 +122,10 @@ export interface JsonReportSummary {
   byClassification?: ClassificationCounts;
   excludedCount?: number;
   truncated?: boolean;
+  /** Phase 8 — count of advanced findings (not included in `findingCount`). */
+  advancedFindingCount?: number;
+  byAdvancedCategory?: AdvancedCategoryCounts;
+  advancedTruncated?: boolean;
   visualFailures?: number;
 }
 
