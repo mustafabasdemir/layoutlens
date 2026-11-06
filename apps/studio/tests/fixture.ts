@@ -57,8 +57,72 @@ export async function writeFixtureReport(dir: string): Promise<void> {
     ...o,
   });
 
+  const inspector390 = {
+    meta: {
+      version: 1,
+      elementCount: 2,
+      devicePixelRatio: 1,
+      viewportWidth: 390,
+      viewportHeight: 844,
+      collectionDurationMs: 8,
+      truncated: false,
+      elementsOmitted: 0,
+      maxDepth: 32,
+      maxElements: 500,
+      maxSelectorLength: 240,
+    },
+    elements: [
+      {
+        id: "el_parent",
+        tagName: "div",
+        selector: "#fixture-wrap",
+        selectorMatches: 1,
+        parentId: null,
+        depth: 2,
+        boundingBox: { x: 10, y: 90, width: 200, height: 80 },
+        visibleBox: { x: 10, y: 90, width: 200, height: 80 },
+        scrollWidth: 200,
+        scrollHeight: 80,
+        clientWidth: 200,
+        clientHeight: 80,
+        computed: {
+          display: "block",
+          position: "static",
+          boxSizing: "border-box",
+          pointerEvents: "auto",
+        },
+        relatedFindingIds: [],
+      },
+      {
+        id: "el_btn",
+        tagName: "button",
+        selector: "#fixture-child-btn",
+        selectorMatches: 1,
+        parentId: "el_parent",
+        depth: 3,
+        boundingBox: { x: 30, y: 110, width: 72, height: 36 },
+        visibleBox: { x: 30, y: 110, width: 72, height: 36 },
+        scrollWidth: 72,
+        scrollHeight: 36,
+        clientWidth: 72,
+        clientHeight: 36,
+        computed: {
+          display: "inline-block",
+          position: "static",
+          boxSizing: "border-box",
+          pointerEvents: "auto",
+        },
+        relatedFindingIds: ["overflow:390:1"],
+      },
+    ],
+    hitTest: {
+      stepPx: 32,
+      samples: [{ x: 66, y: 128, topIds: ["el_btn", "el_parent"] }],
+    },
+  };
+
   const report = {
-    schemaVersion: "1.0",
+    schemaVersion: "1.3",
     tool: "layoutlens",
     url: FIXTURE_URL,
     scannedAt: FIXTURE_SCANNED_AT,
@@ -81,6 +145,7 @@ export async function writeFixtureReport(dir: string): Promise<void> {
         screenshot: "screenshots/viewport-390.png",
         findings: [
           finding({
+            id: "overflow:390:0",
             selector: ".pricing-table",
             severity: "high",
             documentContributionPx: 220,
@@ -89,6 +154,7 @@ export async function writeFixtureReport(dir: string): Promise<void> {
             boundingBox: { x: 10, y: 100, width: 600, height: 50 },
           }),
           finding({
+            id: "overflow:390:1",
             selector: ".code-sample <script>alert(1)</script>",
             severity: "medium",
             overflowPx: 30,
@@ -96,12 +162,14 @@ export async function writeFixtureReport(dir: string): Promise<void> {
             boundingBox: { x: 20, y: 200, width: 100, height: 40 },
           }),
           finding({
+            id: "overflow:390:2",
             selector: "footer .badge",
             severity: "low",
             documentContributionPx: 5,
             boundingBox: { x: 0, y: 2000, width: 100, height: 20 },
           }),
         ],
+        inspector: inspector390,
         advancedFindings: [
           {
             id: "offscreen-control:nav:collapsed-link:-200:100",

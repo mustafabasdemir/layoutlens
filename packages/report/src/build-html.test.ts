@@ -27,6 +27,7 @@ const sample: ScanResult = {
       screenshot: "screenshots/viewport-390.png",
       findings: [
         {
+          id: "overflow:390:0",
           tagName: "div",
           selector: "#x",
           severity: "high",

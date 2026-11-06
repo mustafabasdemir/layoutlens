@@ -37,8 +37,19 @@ export async function runVisualRegression(
   for (const width of VIEWPORT_WIDTHS) {
     const label = getViewportLabel(width);
     const viewport = result.viewports.find((v) => v.width === width);
-    const actualRelative =
-      viewport?.screenshot ?? viewportScreenshotRelativePath(width);
+    if (!viewport?.screenshot || viewport.inspectionStatus === "failed" || viewport.inspectionStatus === "skipped") {
+      comparisons.push({
+        width,
+        label,
+        status: "missing-baseline",
+        diffPixels: 0,
+        diffPixelRatio: 0,
+        totalPixels: 0,
+        currentScreenshot: viewportScreenshotRelativePath(width),
+      });
+      continue;
+    }
+    const actualRelative = viewport.screenshot;
     const actualAbs = join(artifactsDirectory, actualRelative);
     const baselineAbs = join(
       baselineDirectory,

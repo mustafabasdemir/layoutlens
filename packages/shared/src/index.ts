@@ -34,6 +34,8 @@ import type {
 
 /** Element responsible for horizontal overflow at a viewport. */
 export interface OverflowFinding {
+  /** Stable id for cross-referencing (e.g. inspector snapshot). */
+  id: string;
   tagName: string;
   selector: string;
   severity: FindingSeverity;
@@ -80,6 +82,10 @@ export interface ViewportScanResult {
   documentClientWidth: number;
   hasHorizontalOverflow: boolean;
   overflowPx: number;
+  /** Phase 9.2.1 — `completed` when fully inspected; legacy callers omit this. */
+  inspectionStatus?: import("./scan-diagnostics.js").ViewportInspectionStatus;
+  inspection?: import("./scan-diagnostics.js").ViewportInspectionDiagnostics;
+  inspectionError?: import("./scan-diagnostics.js").ViewportInspectionError;
   /** Root-cause overflow elements after false-positive filtering. */
   findings: OverflowFinding[];
   /** Same as findings (Phase 1 field name). */
@@ -92,6 +98,8 @@ export interface ViewportScanResult {
   advancedAnalysis?: import("./responsive.js").AdvancedViewportAnalysis;
   /** Relative path to viewport screenshot inside an HTML report bundle. */
   screenshot?: string;
+  /** Phase 9 — optional inspector snapshot (present when capture was enabled). */
+  inspector?: import("./inspector.js").InspectorSnapshot;
 }
 
 export interface ScanSummary {
@@ -112,6 +120,20 @@ export interface ScanSummary {
   byAdvancedCategory?: import("./responsive.js").AdvancedCategoryCounts;
   advancedTruncated?: boolean;
   visualFailures?: number;
+  /** Phase 9.2 — HTTP navigation (first viewport). */
+  navigation?: import("./navigation.js").ScanNavigation;
+  /** Phase 9.2 — derived trust hint for UX. */
+  scanTrust?: import("./navigation.js").NavigationQuality;
+  viewportInspectionCompleteCount?: number;
+  viewportInspectionFailedCount?: number;
+  viewportInspectionSkippedCount?: number;
+  scanCompletionStatus?: "full" | "partial" | "failed";
+  viewportOutcomes?: readonly {
+    width: ViewportWidth;
+    label: string;
+    status: import("./scan-diagnostics.js").ViewportInspectionStatus;
+    message?: string;
+  }[];
 }
 
 export interface ScanResult {
@@ -121,6 +143,10 @@ export interface ScanResult {
   /** Viewports with document-level horizontal overflow (exit code). */
   issueCount: number;
   summary: ScanSummary;
+  /** Phase 9.2 — HTTP response / redirect metadata (first navigation). */
+  navigation?: import("./navigation.js").ScanNavigation;
+  /** Phase 9.2.1 — first-viewport navigation/readiness diagnostics. */
+  navigationDiagnostics?: import("./scan-diagnostics.js").ScanNavigationDiagnostics;
   /** Present when `--baseline-dir` is used during scan. */
   visual?: import("./visual.js").VisualRegressionResult;
 }
@@ -141,12 +167,24 @@ export interface ScanOptions {
   signal?: AbortSignal;
   /** Phase 8 detector toggles and thresholds. */
   detection?: Partial<import("./responsive.js").DetectionConfig>;
+  /** Phase 9 — bounded DOM snapshot for Visual Inspector (default off). */
+  inspector?: Partial<import("./inspector.js").InspectorCaptureOptions>;
+  /** Phase 9.2.1 — navigation, readiness, screenshot timeouts (defaults are conservative). */
+  timeouts?: import("./scan-timeouts.js").ScanTimeoutOptions;
 }
 
 export type ScanProgressEvent =
   | { type: "browser-launched" }
   | { type: "viewport-started"; width: ViewportWidth; index: number; total: number }
-  | { type: "viewport-completed"; width: ViewportWidth; index: number; total: number; findingCount: number }
+  | {
+      type: "viewport-completed";
+      width: ViewportWidth;
+      index: number;
+      total: number;
+      findingCount: number;
+      status: import("./scan-diagnostics.js").ViewportInspectionStatus;
+      message?: string;
+    }
   | { type: "visual-compare-started" }
   | { type: "visual-compare-completed"; failedCount: number };
 
@@ -190,6 +228,7 @@ export type { SeverityCounts } from "./severity.js";
 export {
   REPORT_SCHEMA_VERSION,
   type JsonReport,
+  type JsonReportSchemaVersion,
   type JsonReportAdvancedFinding,
   type JsonReportFinding,
   type JsonReportSummary,
@@ -227,11 +266,53 @@ export {
 } from "./design-tokens.js";
 export {
   mapBoxToScreenshot,
+  screenshotPointerToLayoutViewportCss,
   type ImageGeometry,
   type OverlayMapping,
   type OverlayRectPercent,
   type ViewportGeometry,
 } from "./overlay-geometry.js";
+export {
+  INSPECTOR_COMPUTED_STYLE_KEYS,
+  INSPECTOR_SNAPSHOT_VERSION,
+  DEFAULT_INSPECTOR_CAPTURE,
+  mergeInspectorConfig,
+  type InspectorCaptureOptions,
+  type InspectorComputedStyleKey,
+  type InspectorElementNode,
+  type InspectorHitTestGrid,
+  type InspectorHitTestSample,
+  type InspectorSnapshot,
+  type InspectorSnapshotMeta,
+} from "./inspector.js";
+export { hitTestInspectorAtPoint, type HitTestAtPointResult } from "./inspector-hit-test.js";
+export { pickInspectorTarget, type InspectorPickResult } from "./inspector-selection.js";
+export {
+  navigationBannerMessage,
+  navigationRedirectNote,
+  navigationQuality,
+  urlForReport,
+  type NavigationKind,
+  type NavigationQuality,
+  type ScanNavigation,
+} from "./navigation.js";
+export {
+  mergeScanTimeouts,
+  DEFAULT_SCAN_NAVIGATION_TIMEOUT_MS,
+  DEFAULT_SCAN_READINESS_TIMEOUT_MS,
+  DEFAULT_POST_LOAD_SETTLE_MS,
+  DEFAULT_SCREENSHOT_TIMEOUT_MS,
+  type ScanTimeoutOptions,
+} from "./scan-timeouts.js";
+export type {
+  EffectiveReadinessMilestone,
+  ReadinessMilestone,
+  ScanNavigationDiagnostics,
+  ViewportFailurePhase,
+  ViewportInspectionDiagnostics,
+  ViewportInspectionError,
+  ViewportInspectionStatus,
+} from "./scan-diagnostics.js";
 export {
   SCAN_API_PREFIX,
   SCAN_API_SERVICE,

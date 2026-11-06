@@ -33,7 +33,7 @@ function reportWithVisual(options: {
   diffPixelRatio: number;
 }): JsonReport {
   return {
-    schemaVersion: "1.0",
+      schemaVersion: "1.3",
     tool: "layoutlens",
     url: "https://visual-views.test/",
     scannedAt: "2026-01-01T00:00:00.000Z",

@@ -8,7 +8,7 @@ import type { JsonReport } from "@layoutlens/shared";
 import { buildHtmlReportDocument } from "./build-html.js";
 
 const report: JsonReport = {
-  schemaVersion: "1.0",
+  schemaVersion: "1.3",
   tool: "layoutlens",
   url: "https://theme.test/",
   scannedAt: "2026-01-01T00:00:00.000Z",

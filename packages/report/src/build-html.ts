@@ -1,4 +1,4 @@
-import { designTokensCss, type JsonReport } from "@layoutlens/shared";
+import { designTokensCss, navigationBannerMessage, navigationRedirectNote, type JsonReport } from "@layoutlens/shared";
 import {
   COMPARE_SLIDER_HELP,
   COMPARE_SLIDER_IDENTICAL_HINT,
@@ -17,6 +17,7 @@ import {
   buildSetupVisualRegressionPanelScript,
   buildVisualPanelClientScript,
 } from "./embed/visual-panel-client.js";
+import { buildInspectorOfflineScript } from "./embed/inspector-offline.js";
 
 export function buildHtmlReportDocument(report: JsonReport): string {
   const title = escapeHtml(`LayoutLens — ${report.url}`);
@@ -32,6 +33,21 @@ export function buildHtmlReportDocument(report: JsonReport): string {
   const sliderKeyboardStep = String(SLIDER_KEYBOARD_STEP);
   const visualPanelClientScript = buildVisualPanelClientScript();
   const setupVisualRegressionPanelScript = buildSetupVisualRegressionPanelScript();
+  const inspectorOfflineScript = buildInspectorOfflineScript();
+
+  const navForHero = report.navigation ?? report.summary.navigation;
+  const navBannerHtml = navForHero ? escapeHtml(navigationBannerMessage(navForHero) ?? "") : "";
+  const navRedirectHtml =
+    navForHero && !navigationBannerMessage(navForHero)
+      ? escapeHtml(navigationRedirectNote(navForHero) ?? "")
+      : "";
+  const navMetaHtml = navForHero
+    ? escapeHtml(
+        `Requested: ${navForHero.requestedUrl}` +
+          (navForHero.finalUrl !== navForHero.requestedUrl ? ` · Final: ${navForHero.finalUrl}` : "") +
+          (navForHero.httpStatus !== null ? ` · HTTP ${navForHero.httpStatus}` : ""),
+      )
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -194,9 +210,126 @@ ${designTokensCss()}
       background: #000;
     }
     .shot-shell img { display: block; width: 100%; height: auto; vertical-align: top; }
+    .shot-shell.ll-inspector-on img {
+      cursor: crosshair;
+      position: relative;
+      z-index: 3;
+      pointer-events: auto;
+    }
+    .ll-inspector-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.6rem;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+    }
+    .ll-inspector-toggle {
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.3rem 0.65rem;
+      font-size: 0.78rem;
+    }
+    .ll-inspector-toggle:disabled { opacity: 0.55; cursor: not-allowed; }
+    .ll-inspector-toggle[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+    }
+    .ll-inspector-meta { color: var(--muted); font-size: 0.72rem; }
+    .ll-inspector-panel {
+      padding: 0.65rem 0.75rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 0.8rem;
+    }
+    .ll-inspector-panel.hidden { display: none; }
+    .ll-inspector-panel h4 { margin: 0 0 0.4rem; font-size: 0.88rem; }
+    .ll-inspector-warn {
+      margin: 0 0 0.5rem;
+      padding: 0.45rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid var(--med);
+      background: color-mix(in srgb, var(--med) 12%, transparent);
+      font-size: 0.78rem;
+    }
+    .ll-inspector-pre {
+      margin: 0 0 0.5rem;
+      padding: 0.45rem 0.55rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      font-size: 0.72rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 12rem;
+      overflow: auto;
+    }
+    .ll-inspector-related { margin: 0.5rem 0; }
+    .ll-inspector-related-title { font-weight: 600; font-size: 0.78rem; margin-bottom: 0.35rem; }
+    .ll-inspector-related-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      font-size: 0.76rem;
+      cursor: pointer;
+      margin-bottom: 0.35rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+    }
+    .ll-inspector-related-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ll-inspector-parent, .ll-inspector-next {
+      font: inherit;
+      font-size: 0.78rem;
+      cursor: pointer;
+      margin: 0.35rem 0.35rem 0 0;
+      padding: 0.35rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+    }
+    .ll-inspector-styles {
+      list-style: none;
+      margin: 0.35rem 0 0;
+      padding: 0;
+      max-height: 10rem;
+      overflow: auto;
+      font-size: 0.72rem;
+    }
+    .ll-inspector-styles li { padding: 0.15rem 0; border-bottom: 1px dashed color-mix(in srgb, var(--border) 60%, transparent); }
+    .ll-inspector-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .ll-inspector-outline {
+      position: absolute;
+      box-sizing: border-box;
+      border: 2px solid var(--accent);
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .ll-inspector-outline.is-hover { border-color: var(--low); background: color-mix(in srgb, var(--low) 14%, transparent); }
+    .ll-inspector-outline.is-selected { border-color: var(--accent); }
     .shot-overlays {
       position: absolute;
       inset: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .shot-overlays .box {
       pointer-events: none;
     }
     .box {
@@ -451,6 +584,19 @@ ${designTokensCss()}
       display: block;
     }
     footer { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 1rem; }
+    .nav-warn {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 10px;
+      border: 1px solid var(--med);
+      background: color-mix(in srgb, var(--med) 12%, transparent);
+      font-size: 0.88rem;
+    }
+    .nav-warn.danger {
+      border-color: var(--high);
+      background: color-mix(in srgb, var(--high) 12%, transparent);
+    }
+    .nav-warn.hidden { display: none; }
   </style>
 </head>
 <body>
@@ -461,6 +607,7 @@ ${designTokensCss()}
     </div>
     <p class="meta" id="report-url"></p>
     <p class="meta" id="report-time"></p>
+    ${navBannerHtml ? `<div class="nav-warn danger" id="report-nav-banner" data-testid="report-nav-banner"><strong>Navigation</strong><p style="margin:0.35rem 0 0">${navBannerHtml}</p><p class="meta" style="margin:0.5rem 0 0">${navMetaHtml}</p><p class="meta" style="margin:0.35rem 0 0">The screenshot and findings below describe what the browser received — they may not match the site you intended to test.</p></div>` : navRedirectHtml ? `<div class="nav-warn" id="report-nav-redirect" data-testid="report-nav-redirect"><p style="margin:0">${navRedirectHtml}</p><p class="meta" style="margin:0.35rem 0 0">${navMetaHtml}</p></div>` : ""}
   </header>
   <div class="toolbar" id="filters"></div>
   <main>
@@ -529,6 +676,8 @@ ${designTokensCss()}
       ${visualPanelClientScript}
 
       ${setupVisualRegressionPanelScript}
+
+      ${inspectorOfflineScript}
 
       function sevBadge(sev) {
         var s = document.createElement("span");
@@ -714,6 +863,7 @@ ${designTokensCss()}
             shell.appendChild(overlays);
             shell.dataset.vpIndex = String(vpIndex);
             shotCol.appendChild(shell);
+            llMountInspector(shell, vp, vpIndex);
 
             img.addEventListener("load", function () {
               var w = vp.width;
@@ -761,6 +911,9 @@ ${designTokensCss()}
             li.dataset.evidence = evidenceOf(f);
             li.dataset.vpIndex = String(vpIndex);
             li.dataset.findingIndex = String(fi);
+            if (f.id) {
+              li.dataset.inspectorFindingId = f.id;
+            }
 
             var row = document.createElement("div");
             row.appendChild(sevBadge(f.severity));

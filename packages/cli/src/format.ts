@@ -2,6 +2,7 @@ import {
   ADVANCED_CATEGORY_LABELS,
   CLASSIFICATION_LABELS,
   EXCLUSION_LABELS,
+  navigationBannerMessage,
   type AdvancedFinding,
   type OverflowFinding,
   type ScanResult,
@@ -124,7 +125,28 @@ export function formatScanResult(result: ScanResult): string {
   lines.push(`${BOLD}LayoutLens scan${RESET}`);
   lines.push(`${DIM}URL:${RESET} ${result.url}`);
   lines.push(`${DIM}Time:${RESET} ${result.scannedAt}`);
+  const nav = result.navigation ?? result.summary.navigation;
+  if (nav) {
+    lines.push(`${DIM}Navigation:${RESET} final ${nav.finalUrl}`);
+    if (nav.httpStatus !== null) lines.push(`${DIM}HTTP status:${RESET} ${nav.httpStatus}`);
+    if (nav.redirectChain.length > 0) {
+      lines.push(`${DIM}Redirects:${RESET} ${nav.redirectChain.length} hop(s)`);
+    }
+    const banner = navigationBannerMessage(nav);
+    if (banner) lines.push(`${YELLOW}${banner}${RESET}`);
+  }
   const s = result.summary;
+  if (s.scanCompletionStatus === "partial" || s.scanCompletionStatus === "failed") {
+    lines.push(
+      `${YELLOW}Scan ${s.scanCompletionStatus}: ${s.viewportInspectionCompleteCount ?? 0}/${result.viewports.length} viewport(s) inspected successfully.${RESET}`,
+    );
+    if (s.viewportOutcomes?.length) {
+      for (const o of s.viewportOutcomes) {
+        const extra = o.message ? ` — ${o.message}` : "";
+        lines.push(`  ${DIM}${o.label} (${o.width}px):${RESET} ${o.status}${extra}`);
+      }
+    }
+  }
   lines.push(
     `${DIM}Findings:${RESET} ${s.findingCount} (${s.byClassification.confirmed} confirmed, ${s.byClassification.potential} potential, ${s.byClassification.insufficientEvidence} insufficient evidence; ${s.bySeverity.high} high, ${s.bySeverity.medium} med, ${s.bySeverity.low} low)`,
   );
@@ -151,13 +173,25 @@ export function formatScanResult(result: ScanResult): string {
   }
   lines.push("");
 
+  const navForCli = result.navigation ?? result.summary.navigation;
+  const navFailedNoMeasure =
+    navForCli &&
+    !navForCli.documentLoaded &&
+    result.viewports.length > 0 &&
+    result.viewports.every((v) => v.analysis.elementsInspected === 0);
+  if (navFailedNoMeasure) {
+    lines.push(`${YELLOW}First navigation failed — layout was not measured; viewport rows below are placeholders only.${RESET}`);
+  }
+
   for (const v of result.viewports) {
     lines.push(...formatViewportBlock(v));
   }
 
   lines.push("");
   const visualFailures = result.summary.visualFailures ?? 0;
-  if (result.issueCount === 0 && visualFailures === 0) {
+  const navBlocksClean =
+    navForCli && (!navForCli.documentLoaded || (navForCli.httpStatus !== null && navForCli.httpStatus >= 400));
+  if (result.issueCount === 0 && visualFailures === 0 && !navBlocksClean) {
     lines.push(`${GREEN}${BOLD}No layout or visual issues detected.${RESET}`);
   } else {
     if (result.issueCount > 0) {
@@ -170,13 +204,37 @@ export function formatScanResult(result: ScanResult): string {
         `${RED}${BOLD}${visualFailures} visual regression comparison(s) failed.${RESET}`,
       );
     }
+    if (
+      navBlocksClean &&
+      result.issueCount === 0 &&
+      visualFailures === 0 &&
+      !navFailedNoMeasure
+    ) {
+      lines.push(
+        `${YELLOW}Layout checks were skipped or unreliable because of the HTTP/navigation result above; the scan did not verify a clean layout.${RESET}`,
+      );
+    }
   }
   lines.push("");
 
   return lines.join("\n");
 }
 
+function navigationExitIssue(nav: NonNullable<ScanResult["navigation"]>): boolean {
+  if (!nav.documentLoaded) return true;
+  const st = nav.httpStatus;
+  if (st === null) return false;
+  return st === 403 || st === 404 || st === 429 || st >= 500;
+}
+
 export function exitCodeForResult(result: ScanResult): number {
   const visualFailures = result.summary.visualFailures ?? 0;
-  return result.issueCount > 0 || visualFailures > 0 ? 1 : 0;
+  const nav = result.navigation ?? result.summary.navigation;
+  const navIssue = nav ? navigationExitIssue(nav) : false;
+  const incomplete =
+    result.summary.scanCompletionStatus === "partial" ||
+    result.summary.scanCompletionStatus === "failed" ||
+    (result.summary.viewportInspectionFailedCount ?? 0) > 0 ||
+    (result.summary.viewportInspectionSkippedCount ?? 0) > 0;
+  return result.issueCount > 0 || visualFailures > 0 || navIssue || incomplete ? 1 : 0;
 }

@@ -351,6 +351,7 @@ export function classifyLayoutEvidence(
       reason += " Its children sit in a single row, like a carousel track. If that is intended, an ancestor should clip or scroll the overflow (for example overflow: hidden on the carousel viewport); otherwise let the row wrap.";
     }
     allFindings.push({
+      id: "",
       tagName: root.c.tagName,
       selector: root.c.selector,
       selectorMatches: root.c.selectorMatches,
@@ -381,6 +382,10 @@ export function classifyLayoutEvidence(
       b.scrollContributionPx - a.scrollContributionPx ||
       b.documentContributionPx - a.documentContributionPx,
   );
+
+  for (let i = 0; i < allFindings.length; i++) {
+    allFindings[i]!.id = `overflow:${evidence.viewportWidth}:${i}`;
+  }
 
   // Group exclusions by the clipping container, or by the outermost element sharing the same reason.
   const excludedGroups = new Map<string, Measured[]>();

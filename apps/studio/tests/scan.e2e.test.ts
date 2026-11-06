@@ -160,7 +160,8 @@ describe("Scan Website runs a real local scan", () => {
 
     await submitScan(page, deadUrl);
     await expect.poll(() => progressCard(page).getAttribute("data-state"), { timeout: 60_000 }).toBe("failed");
-    expect(await page.getByTestId("scan-error").textContent()).toContain("ERR_CONNECTION_REFUSED");
+    const errText = await page.getByTestId("scan-error").textContent();
+    expect(errText).toMatch(/ERR_CONNECTION_REFUSED|ERR_INVALID_HTTP_RESPONSE/);
     expect(await page.getByRole("button", { name: "Scan again" }).count()).toBe(1);
 
     await submitScan(page, "http://169.254.169.254/latest/meta-data/");

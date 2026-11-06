@@ -77,7 +77,16 @@ export function describeScanError(error: unknown, timeoutMs: number): string {
   const net = /net::(ERR_[A-Z_]+)/.exec(raw);
   if (net) return `The page couldn't be loaded (${net[1]}).`;
   if (/Timeout \d+ms exceeded/i.test(raw)) {
-    return "The page didn't finish loading within 30 seconds at one of the viewports.";
+    const m = /page\.(goto|screenshot|waitForLoadState)/.exec(raw);
+    const op = m?.[1];
+    const opLabel =
+      op === "screenshot"
+        ? "taking a screenshot"
+        : op === "waitForLoadState"
+          ? "waiting for a load milestone"
+          : "loading the page";
+    const detail = firstLine.length > 0 ? ` (${firstLine.slice(0, 200)})` : "";
+    return `The scanner timed out while ${opLabel}.${detail}`.slice(0, 400);
   }
   return (firstLine || "The scan failed.").slice(0, 300);
 }
@@ -331,9 +340,16 @@ export class ScanService {
           case "viewport-started":
             p.message = `Loading and measuring the page at ${event.width}px (${getViewportLabel(event.width)})`;
             break;
-          case "viewport-completed":
+          case "viewport-completed": {
             p.completedSteps += 1;
+            const label = getViewportLabel(event.width);
+            if (event.status === "failed" && event.message) {
+              p.message = `${label} viewport: ${event.message}`;
+            } else if (event.status === "skipped") {
+              p.message = `${label} viewport skipped — ${event.message ?? "depends on an earlier step"}`;
+            }
             break;
+          }
           case "visual-compare-started":
             p.message = `Comparing screenshots with baseline “${baseline?.name ?? ""}”`;
             break;
@@ -345,32 +361,58 @@ export class ScanService {
       };
 
       const directory = this.store.dirFor(record.id);
+      const navBudget = Math.max(5_000, Math.min(timeoutMs, Math.floor(timeoutMs / Math.max(1, VIEWPORT_WIDTHS.length + 2))));
       const result = await this.scanner({
         url: record.url,
         headless: true,
         viewportHeight: DEFAULT_VIEWPORT_HEIGHT,
         artifacts: { directory, ...(baseline ? { baselineDirectory: baseline.directory } : {}) },
         ...(baseline ? { baselineDirectory: baseline.directory } : {}),
+        inspector: { enabled: true },
         onProgress,
         signal: controller.signal,
+        timeouts: {
+          navigationMs: navBudget,
+          readinessMs: Math.min(30_000, Math.max(5_000, navBudget)),
+          screenshotMs: Math.min(45_000, Math.max(10_000, navBudget)),
+          postLoadSettleMs: 2_500,
+        },
       });
       if (controller.signal.aborted) throw controller.signal.reason;
+      const noViewportSucceeded =
+        result.viewports.length > 0 &&
+        result.viewports.every((v) => v.inspectionStatus === "failed" || v.inspectionStatus === "skipped");
+      if (noViewportSucceeded) {
+        const hint =
+          result.navigation?.message ??
+          (result.summary.viewportOutcomes?.find((o) => o.message)?.message ?? "No viewport finished inspection.");
+        throw new Error(hint);
+      }
 
       record.progress.message = "Writing the report";
       await save();
       await writeHtmlReportBundle(result, directory);
       record.progress.completedSteps = record.progress.totalSteps;
-      record.progress.message = "Scan complete";
-      record.summary = { ...result.summary, viewportWidths: result.viewports.map((v) => v.width) };
+      const status = result.summary.scanCompletionStatus;
+      record.progress.message =
+        status === "partial"
+          ? "Scan finished with some viewport failures — see the report"
+          : "Scan complete";
+      record.summary = {
+        ...result.summary,
+        viewportWidths: result.viewports.map((v) => v.width),
+        ...(result.navigationDiagnostics ? { navigationDiagnostics: result.navigationDiagnostics } : {}),
+      };
       this.finish(job, "completed");
     } catch (error) {
       const reason: unknown = controller.signal.aborted ? controller.signal.reason : error;
       if (job.cancelRequested) {
         this.finish(job, "cancelled", "The scan was cancelled.");
+        record.progress.message = "Cancelled";
       } else {
         this.finish(job, "failed", describeScanError(reason, timeoutMs));
+        record.progress.message = "Failed";
       }
-      record.progress.message = record.state === "cancelled" ? "Cancelled" : "Failed";
       await this.store.removeArtifacts(record.id).catch(() => undefined);
     } finally {
       clearTimeout(timer);

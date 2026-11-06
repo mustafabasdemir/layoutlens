@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LayoutLens inspector fixture</title>
+  <style>
+    html, body { margin: 0; font-family: system-ui; }
+    .outer { padding: 16px; }
+    .inner { display: flex; gap: 8px; }
+    .box { width: 80px; height: 40px; background: #6366f1; border-radius: 4px; }
+    .overlap { position: relative; margin-top: -20px; margin-left: 40px; background: #22c55e; }
+  </style>
+</head>
+<body>
+  <main class="outer">
+    <div class="inner">
+      <div class="box" id="a" aria-label="first"></div>
+      <div class="box overlap" id="b" aria-label="second"></div>
+    </div>
+  </main>
+</body>
+</html>

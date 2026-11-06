@@ -65,7 +65,7 @@ describe("offline HTML report — evidence classification", () => {
   it("states truncation and never draws an outline for an element with no visible part", async () => {
     const dir = await mkdtemp(join(tmpdir(), "layoutlens-trunc-"));
     const report: JsonReport = {
-      schemaVersion: "1.0",
+      schemaVersion: "1.3",
       tool: "layoutlens",
       url: "https://example.com/",
       scannedAt: "2026-01-01T00:00:00.000Z",

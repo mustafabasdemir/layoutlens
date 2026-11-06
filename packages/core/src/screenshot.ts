@@ -13,8 +13,11 @@ export async function captureViewportScreenshot(
   artifactsDirectory: string,
   width: number,
   stability?: ScreenshotStabilityOptions,
+  options?: { skipStabilize?: boolean; timeoutMs?: number },
 ): Promise<string> {
-  await stabilizePageForScreenshot(page, stability);
+  if (!options?.skipStabilize) {
+    await stabilizePageForScreenshot(page, stability);
+  }
   const screenshotsDir = join(artifactsDirectory, SCREENSHOT_SUBDIR);
   await mkdir(screenshotsDir, { recursive: true });
   const relativePath = viewportScreenshotRelativePath(width);
@@ -23,6 +26,7 @@ export async function captureViewportScreenshot(
     type: "png",
     fullPage: false,
     animations: "disabled",
+    ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
   });
   return relativePath;
 }

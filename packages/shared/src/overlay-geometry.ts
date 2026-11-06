@@ -97,3 +97,29 @@ export function mapBoxToScreenshot(
   }
   return { status: "visible", rect };
 }
+
+/**
+ * Map pointer coordinates relative to the displayed `<img>` (CSS px) to layout-viewport CSS coordinates
+ * matching `getBoundingClientRect()` / scan bounding boxes. Uses the same scale model as `mapBoxToScreenshot`.
+ */
+export function screenshotPointerToLayoutViewportCss(
+  pointerRelX: number,
+  pointerRelY: number,
+  imageDisplayCss: { width: number; height: number },
+  image: ImageGeometry,
+  viewport: ViewportGeometry,
+): { x: number; y: number } {
+  const { width: dw, height: dh } = imageDisplayCss;
+  if (!positive(dw) || !positive(dh) || !positive(image.naturalWidth) || !positive(image.naturalHeight)) {
+    return { x: NaN, y: NaN };
+  }
+  const fx = pointerRelX / dw;
+  const fy = pointerRelY / dh;
+  const capturedWidth = viewport.width;
+  const scale = image.naturalWidth / capturedWidth;
+  const capturedHeight = image.naturalHeight / scale;
+  return {
+    x: fx * capturedWidth,
+    y: fy * capturedHeight,
+  };
+}

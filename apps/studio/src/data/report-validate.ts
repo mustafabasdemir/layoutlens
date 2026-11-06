@@ -1,6 +1,10 @@
 import {
   FINDING_CLASSIFICATIONS,
   EXCLUSION_LABELS,
+  INSPECTOR_COMPUTED_STYLE_KEYS,
+  INSPECTOR_SNAPSHOT_VERSION,
+  navigationQuality,
+  REPORT_SCHEMA_VERSION,
   type ClippingContext,
   type ExcludedFinding,
   type ExclusionReason,
@@ -17,6 +21,11 @@ import {
   type RelatedElement,
   type ViewportAnalysis,
   type AdvancedViewportAnalysis,
+  type InspectorElementNode,
+  type InspectorSnapshot,
+  type NavigationQuality,
+  type ScanNavigation,
+  type ScanNavigationDiagnostics,
 } from "@layoutlens/shared";
 
 const EXCLUSION_REASONS = Object.keys(EXCLUSION_LABELS) as ExclusionReason[];
@@ -48,6 +57,72 @@ function str(v: unknown, field: string): string {
 
 function optionalStr(v: unknown): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+const VIEWPORT_INSPECTION_STATUSES = ["completed", "failed", "skipped"] as const;
+const SCAN_COMPLETION_STATUSES = ["full", "partial", "failed"] as const;
+const READINESS_MILESTONES = ["none", "commit", "domcontentloaded", "load"] as const;
+const VIEWPORT_FAILURE_PHASES = ["navigation", "readiness", "viewport-resize", "measurement", "inspector", "screenshot"] as const;
+
+function parseViewportInspectionDiagnostics(
+  raw: unknown,
+  path: string,
+): import("@layoutlens/shared").ViewportInspectionDiagnostics | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const out: import("@layoutlens/shared").ViewportInspectionDiagnostics = {};
+  if (raw.gotoWaitUntil === "domcontentloaded") out.gotoWaitUntil = "domcontentloaded";
+  if (raw.gotoDurationMs !== undefined) out.gotoDurationMs = num(raw.gotoDurationMs, `${path}.gotoDurationMs`);
+  if (raw.readinessWaitDurationMs !== undefined) {
+    out.readinessWaitDurationMs = num(raw.readinessWaitDurationMs, `${path}.readinessWaitDurationMs`);
+  }
+  if (typeof raw.domContentLoadedReached === "boolean") out.domContentLoadedReached = raw.domContentLoadedReached;
+  if (typeof raw.loadEventReached === "boolean") out.loadEventReached = raw.loadEventReached;
+  if (typeof raw.effectiveReadinessMilestone === "string" && (READINESS_MILESTONES as readonly string[]).includes(raw.effectiveReadinessMilestone)) {
+    out.effectiveReadinessMilestone = raw.effectiveReadinessMilestone as import("@layoutlens/shared").ReadinessMilestone;
+  }
+  if (typeof raw.partialReadinessRecovery === "boolean") out.partialReadinessRecovery = raw.partialReadinessRecovery;
+  const rr = optionalStr(raw.readinessRecoveryNote);
+  if (rr !== undefined) out.readinessRecoveryNote = rr.slice(0, 200);
+  if (raw.postLoadSettleMs !== undefined) out.postLoadSettleMs = num(raw.postLoadSettleMs, `${path}.postLoadSettleMs`);
+  if (typeof raw.navigationCommitted === "boolean") out.navigationCommitted = raw.navigationCommitted;
+  if (raw.screenshotCaptureMs !== undefined) out.screenshotCaptureMs = num(raw.screenshotCaptureMs, `${path}.screenshotCaptureMs`);
+  if (typeof raw.screenshotTimedOut === "boolean") out.screenshotTimedOut = raw.screenshotTimedOut;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseViewportInspectionError(raw: unknown, path: string): import("@layoutlens/shared").ViewportInspectionError | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const phase = str(raw.phase, `${path}.phase`);
+  if (!(VIEWPORT_FAILURE_PHASES as readonly string[]).includes(phase)) {
+    throw new ReportValidationError(`${path}.phase is invalid.`);
+  }
+  const message = str(raw.message, `${path}.message`).slice(0, 500);
+  return { phase: phase as import("@layoutlens/shared").ViewportFailurePhase, message };
+}
+
+function parseNavigationDiagnostics(raw: unknown, path: string): ScanNavigationDiagnostics | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const milestone = str(raw.firstEffectiveMilestone, `${path}.firstEffectiveMilestone`);
+  if (!(READINESS_MILESTONES as readonly string[]).includes(milestone)) {
+    throw new ReportValidationError(`${path}.firstEffectiveMilestone is invalid.`);
+  }
+  const out: ScanNavigationDiagnostics = {
+    firstViewportWidth: num(raw.firstViewportWidth, `${path}.firstViewportWidth`),
+    firstGotoWaitUntil: "domcontentloaded",
+    firstGotoDurationMs: num(raw.firstGotoDurationMs, `${path}.firstGotoDurationMs`),
+    firstNavigationCommitted: raw.firstNavigationCommitted === true,
+    firstReadinessDurationMs: num(raw.firstReadinessDurationMs, `${path}.firstReadinessDurationMs`),
+    firstDomContentLoaded: raw.firstDomContentLoaded === true,
+    firstLoadEvent: raw.firstLoadEvent === true,
+    firstEffectiveMilestone: milestone as ScanNavigationDiagnostics["firstEffectiveMilestone"],
+    firstPartialReadinessRecovery: raw.firstPartialReadinessRecovery === true,
+  };
+  const fr = optionalStr(raw.firstReadinessNote);
+  if (fr !== undefined) out.firstReadinessNote = fr.slice(0, 200);
+  return out;
 }
 
 function parseBox(raw: unknown, path: string): JsonReportBoundingBox {
@@ -136,6 +211,8 @@ function parseFinding(raw: unknown, path: string): JsonReportFinding {
     clientWidth: num(raw.clientWidth, `${path}.clientWidth`),
     boundingBox: parseBox(raw.boundingBox, `${path}.boundingBox`),
   };
+  const fid = optionalStr(raw.id);
+  if (fid) finding.id = fid.slice(0, 500);
   if (typeof raw.classification === "string" && (FINDING_CLASSIFICATIONS as readonly string[]).includes(raw.classification)) {
     finding.classification = raw.classification as FindingClassification;
   }
@@ -158,6 +235,122 @@ function parseFinding(raw: unknown, path: string): JsonReportFinding {
   const relatedCount = optionalNum(raw.relatedCount);
   if (relatedCount !== undefined) finding.relatedCount = relatedCount;
   return finding;
+}
+
+function parseInspectorComputed(raw: unknown, path: string): InspectorElementNode["computed"] {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const out: InspectorElementNode["computed"] = {};
+  for (const k of INSPECTOR_COMPUTED_STYLE_KEYS) {
+    const v = raw[k];
+    if (typeof v === "string" && v.length > 0) (out as Record<string, string>)[k] = v.slice(0, 2000);
+  }
+  return out;
+}
+
+function parseInspectorElement(raw: unknown, path: string): InspectorElementNode {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const ids = raw.relatedFindingIds;
+  const relatedFindingIds = Array.isArray(ids)
+    ? ids.filter((x): x is string => typeof x === "string").map((s) => s.slice(0, 500))
+    : [];
+  return {
+    id: str(raw.id, `${path}.id`),
+    tagName: str(raw.tagName, `${path}.tagName`).toLowerCase(),
+    selector: str(raw.selector, `${path}.selector`).slice(0, 2000),
+    selectorMatches: num(raw.selectorMatches, `${path}.selectorMatches`),
+    parentId: raw.parentId === null ? null : typeof raw.parentId === "string" ? raw.parentId : null,
+    depth: num(raw.depth, `${path}.depth`),
+    boundingBox: parseBox(raw.boundingBox, `${path}.boundingBox`),
+    visibleBox: parseBox(raw.visibleBox, `${path}.visibleBox`),
+    scrollWidth: num(raw.scrollWidth, `${path}.scrollWidth`),
+    scrollHeight: num(raw.scrollHeight, `${path}.scrollHeight`),
+    clientWidth: num(raw.clientWidth, `${path}.clientWidth`),
+    clientHeight: num(raw.clientHeight, `${path}.clientHeight`),
+    computed: parseInspectorComputed(raw.computed, `${path}.computed`),
+    relatedFindingIds,
+  };
+}
+
+const NAVIGATION_QUALITIES = ["trusted", "http_error", "network_error", "challenge_uncertain"] as const;
+const NAVIGATION_KINDS = ["ok", "redirect", "client_error", "server_error", "network_error"] as const;
+
+function parseScanNavigation(raw: unknown, path: string): ScanNavigation {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const redirectChain = Array.isArray(raw.redirectChain)
+    ? raw.redirectChain.filter((x): x is string => typeof x === "string").map((s) => s.slice(0, 2000))
+    : [];
+  const httpStatus = raw.httpStatus === null ? null : optionalNum(raw.httpStatus);
+  const kind = str(raw.kind, `${path}.kind`);
+  if (!(NAVIGATION_KINDS as readonly string[]).includes(kind)) {
+    throw new ReportValidationError(`${path}.kind is invalid.`);
+  }
+  const out: ScanNavigation = {
+    requestedUrl: str(raw.requestedUrl, `${path}.requestedUrl`).slice(0, 2000),
+    finalUrl: str(raw.finalUrl, `${path}.finalUrl`).slice(0, 2000),
+    httpStatus: httpStatus === undefined ? null : httpStatus,
+    redirectChain,
+    responseOk: raw.responseOk === true,
+    documentLoaded: raw.documentLoaded === true,
+    kind: kind as ScanNavigation["kind"],
+  };
+  const message = optionalStr(raw.message);
+  if (message !== undefined) out.message = message.slice(0, 500);
+  if (raw.challengePageLikely === true) {
+    out.challengePageLikely = true;
+    const sig = raw.challengeSignals;
+    if (Array.isArray(sig)) {
+      out.challengeSignals = sig.filter((x): x is string => typeof x === "string").map((s) => s.slice(0, 120));
+    }
+  }
+  return out;
+}
+
+function parseInspectorSnapshot(raw: unknown, path: string): InspectorSnapshot {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const meta = raw.meta;
+  if (!isObject(meta)) throw new ReportValidationError(`${path}.meta must be an object.`);
+  if (!Array.isArray(raw.elements)) throw new ReportValidationError(`${path}.elements must be an array.`);
+  const v = num(meta.version, `${path}.meta.version`);
+  if (v !== INSPECTOR_SNAPSHOT_VERSION) {
+    throw new ReportValidationError(`${path}.meta.version must be ${INSPECTOR_SNAPSHOT_VERSION}.`);
+  }
+  const snap: InspectorSnapshot = {
+    meta: {
+      version: INSPECTOR_SNAPSHOT_VERSION,
+      elementCount: num(meta.elementCount, `${path}.meta.elementCount`),
+      devicePixelRatio: num(meta.devicePixelRatio, `${path}.meta.devicePixelRatio`),
+      viewportWidth: num(meta.viewportWidth, `${path}.meta.viewportWidth`),
+      viewportHeight: num(meta.viewportHeight, `${path}.meta.viewportHeight`),
+      collectionDurationMs: num(meta.collectionDurationMs, `${path}.meta.collectionDurationMs`),
+      truncated: meta.truncated === true,
+      elementsOmitted: num(meta.elementsOmitted, `${path}.meta.elementsOmitted`),
+      maxDepth: num(meta.maxDepth, `${path}.meta.maxDepth`),
+      maxElements: num(meta.maxElements, `${path}.meta.maxElements`),
+      maxSelectorLength: num(meta.maxSelectorLength, `${path}.meta.maxSelectorLength`),
+    },
+    elements: raw.elements.map((e, i) => parseInspectorElement(e, `${path}.elements[${i}]`)),
+  };
+  if (raw.hitTest !== undefined && isObject(raw.hitTest)) {
+    const ht = raw.hitTest;
+    const samples = ht.samples;
+    if (typeof ht.stepPx === "number" && Array.isArray(samples)) {
+      snap.hitTest = {
+        stepPx: num(ht.stepPx, `${path}.hitTest.stepPx`),
+        samples: samples.map((s, i) => {
+          if (!isObject(s)) throw new ReportValidationError(`${path}.hitTest.samples[${i}] must be an object.`);
+          const topIds = Array.isArray(s.topIds)
+            ? s.topIds.filter((x): x is string => typeof x === "string").map((t) => t.slice(0, 64))
+            : [];
+          return {
+            x: num(s.x, `${path}.hitTest.samples[${i}].x`),
+            y: num(s.y, `${path}.hitTest.samples[${i}].y`),
+            topIds,
+          };
+        }),
+      };
+    }
+  }
+  return snap;
 }
 
 function parseExcluded(raw: unknown, path: string): ExcludedFinding[] | undefined {
@@ -345,6 +538,13 @@ function parseViewport(raw: unknown, index: number): JsonReportViewport {
     overflowPx: num(raw.overflowPx, `${path}.overflowPx`),
     findings: raw.findings.map((f, i) => parseFinding(f, `${path}.findings[${i}]`)),
   };
+  if (typeof raw.inspectionStatus === "string" && (VIEWPORT_INSPECTION_STATUSES as readonly string[]).includes(raw.inspectionStatus)) {
+    vp.inspectionStatus = raw.inspectionStatus as JsonReportViewport["inspectionStatus"];
+  }
+  const ins = parseViewportInspectionDiagnostics(raw.inspection, `${path}.inspection`);
+  if (ins) vp.inspection = ins;
+  const ierr = parseViewportInspectionError(raw.inspectionError, `${path}.inspectionError`);
+  if (ierr) vp.inspectionError = ierr;
   const excluded = parseExcluded(raw.excluded, `${path}.excluded`);
   if (excluded) vp.excluded = excluded;
   if (Array.isArray(raw.advancedFindings)) {
@@ -360,6 +560,7 @@ function parseViewport(raw: unknown, index: number): JsonReportViewport {
   if (screenshot) vp.screenshot = screenshot;
   const visual = parseVisual(raw.visualCompare, `${path}.visualCompare`);
   if (visual) vp.visualCompare = visual;
+  if (raw.inspector !== undefined) vp.inspector = parseInspectorSnapshot(raw.inspector, `${path}.inspector`);
   return vp;
 }
 
@@ -369,7 +570,8 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
   if (input.tool !== "layoutlens") {
     throw new ReportValidationError('Not a LayoutLens report (missing tool: "layoutlens").');
   }
-  if (input.schemaVersion !== "1.0") {
+  const sv = input.schemaVersion;
+  if (sv !== "1.0" && sv !== "1.1" && sv !== "1.2" && sv !== "1.3" && sv !== REPORT_SCHEMA_VERSION) {
     throw new ReportValidationError(
       `Unsupported report schema version: ${String(input.schemaVersion)}.`,
     );
@@ -381,8 +583,18 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
   if (!isObject(summary) || !isObject(summary.bySeverity)) {
     throw new ReportValidationError("Report summary is missing.");
   }
+  const schemaVersion =
+    input.schemaVersion === "1.0"
+      ? "1.0"
+      : input.schemaVersion === "1.1"
+        ? "1.1"
+        : input.schemaVersion === "1.2"
+          ? "1.2"
+          : input.schemaVersion === "1.3"
+            ? "1.3"
+            : REPORT_SCHEMA_VERSION;
   const report: JsonReport = {
-    schemaVersion: "1.0",
+    schemaVersion,
     tool: "layoutlens",
     url: str(input.url, "url"),
     scannedAt: str(input.scannedAt, "scannedAt"),
@@ -422,6 +634,53 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
       offscreenControl: num(byAdv.offscreenControl, "summary.byAdvancedCategory.offscreenControl"),
       touchTarget: num(byAdv.touchTarget, "summary.byAdvancedCategory.touchTarget"),
     };
+  }
+  const vic = optionalNum(summary.viewportInspectionCompleteCount);
+  if (vic !== undefined) report.summary.viewportInspectionCompleteCount = vic;
+  const vif = optionalNum(summary.viewportInspectionFailedCount);
+  if (vif !== undefined) report.summary.viewportInspectionFailedCount = vif;
+  const visk = optionalNum(summary.viewportInspectionSkippedCount);
+  if (visk !== undefined) report.summary.viewportInspectionSkippedCount = visk;
+  if (typeof summary.scanCompletionStatus === "string" && (SCAN_COMPLETION_STATUSES as readonly string[]).includes(summary.scanCompletionStatus)) {
+    report.summary.scanCompletionStatus = summary.scanCompletionStatus as NonNullable<JsonReport["summary"]["scanCompletionStatus"]>;
+  }
+  if (Array.isArray(summary.viewportOutcomes)) {
+    report.summary.viewportOutcomes = summary.viewportOutcomes.map((vo, i) => {
+      const p = `summary.viewportOutcomes[${i}]`;
+      if (!isObject(vo)) throw new ReportValidationError(`${p} must be an object.`);
+      const st = str(vo.status, `${p}.status`);
+      if (!(VIEWPORT_INSPECTION_STATUSES as readonly string[]).includes(st)) {
+        throw new ReportValidationError(`${p}.status is invalid.`);
+      }
+      const row: NonNullable<JsonReport["summary"]["viewportOutcomes"]>[number] = {
+        width: num(vo.width, `${p}.width`),
+        label: str(vo.label, `${p}.label`),
+        status: st as NonNullable<JsonReport["summary"]["viewportOutcomes"]>[number]["status"],
+      };
+      const om = optionalStr(vo.message);
+      if (om !== undefined) row.message = om.slice(0, 500);
+      return row;
+    });
+  }
+  const topNav = input.navigation !== undefined ? parseScanNavigation(input.navigation, "navigation") : undefined;
+  const summaryNav =
+    isObject(summary) && summary.navigation !== undefined
+      ? parseScanNavigation(summary.navigation, "summary.navigation")
+      : undefined;
+  const nav = topNav ?? summaryNav;
+  if (nav) {
+    report.navigation = nav;
+    report.summary.navigation = nav;
+  }
+  const st = summary.scanTrust;
+  if (typeof st === "string" && (NAVIGATION_QUALITIES as readonly string[]).includes(st)) {
+    report.summary.scanTrust = st as NavigationQuality;
+  } else if (nav) {
+    report.summary.scanTrust = navigationQuality(nav);
+  }
+  const navDiag = parseNavigationDiagnostics(input.navigationDiagnostics, "navigationDiagnostics");
+  if (navDiag) {
+    report.navigationDiagnostics = navDiag;
   }
   return report;
 }

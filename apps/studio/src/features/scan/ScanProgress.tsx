@@ -1,5 +1,5 @@
 import { CheckCircle2, CircleSlash, Layers, Loader2, OctagonAlert, Square } from "lucide-react";
-import { progressPercent, type ScanJobView } from "@layoutlens/shared";
+import { navigationBannerMessage, progressPercent, type ScanJobView } from "@layoutlens/shared";
 import { useScanJobs } from "../../data/scan-jobs";
 import { displayUrl, formatCount, plural } from "../../lib/format";
 import { Badge, Button, Card, Notice } from "../../ui/primitives";
@@ -12,12 +12,23 @@ function duration(view: ScanJobView): string | null {
 }
 
 export function ScanStateBadge({ scan }: { scan: ScanJobView }) {
+  const trust = scan.summary?.scanTrust;
+  const partial = scan.summary?.scanCompletionStatus === "partial";
   switch (scan.state) {
     case "queued":
       return <Badge tone="info">Queued</Badge>;
     case "running":
       return <Badge tone="accent">Scanning</Badge>;
     case "completed":
+      if (partial) {
+        return <Badge tone="warning">Completed (partial)</Badge>;
+      }
+      if (trust === "http_error" || trust === "network_error") {
+        return <Badge tone="danger">Completed (HTTP issue)</Badge>;
+      }
+      if (trust === "challenge_uncertain") {
+        return <Badge tone="warning">Completed (verify page)</Badge>;
+      }
       return <Badge tone="success">Completed</Badge>;
     case "failed":
       return <Badge tone="danger">Failed</Badge>;
@@ -86,6 +97,57 @@ export function ScanProgress({ scan, onRetry }: { scan: ScanJobView; onRetry?: (
 
         {scan.state === "completed" && scan.summary ? (
           <div className="scan-result">
+            {scan.summary.scanCompletionStatus === "partial" || scan.summary.scanCompletionStatus === "failed" ? (
+              <Notice tone="warning" title="Viewport inspection incomplete" data-testid="scan-partial-notice">
+                <p>
+                  {[
+                    scan.summary.viewportInspectionFailedCount
+                      ? `${scan.summary.viewportInspectionFailedCount} viewport(s) failed`
+                      : null,
+                    scan.summary.viewportInspectionSkippedCount
+                      ? `${scan.summary.viewportInspectionSkippedCount} skipped (depends on earlier steps)`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "Some viewports did not finish inspection."}
+                </p>
+                {scan.summary.viewportOutcomes ? (
+                  <ul className="field-hint mono small">
+                    {scan.summary.viewportOutcomes.map((o) => (
+                      <li key={o.width}>
+                        {o.label} ({o.width}px): {o.status}
+                        {o.message ? ` — ${o.message}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </Notice>
+            ) : null}
+            {scan.summary.navigation ? (
+              <Notice
+                tone={
+                  scan.summary.scanTrust === "challenge_uncertain"
+                    ? "warning"
+                    : scan.summary.scanTrust === "http_error" || scan.summary.scanTrust === "network_error"
+                      ? "danger"
+                      : "info"
+                }
+                title="Navigation"
+                data-testid="scan-navigation-notice"
+              >
+                {navigationBannerMessage(scan.summary.navigation) ? (
+                  <p>{navigationBannerMessage(scan.summary.navigation)}</p>
+                ) : null}
+                <p className="field-hint mono small">
+                  Requested: {scan.summary.navigation.requestedUrl}
+                  {scan.summary.navigation.finalUrl !== scan.summary.navigation.requestedUrl ? ` · Final: ${scan.summary.navigation.finalUrl}` : ""}
+                  {scan.summary.navigation.httpStatus !== null ? ` · HTTP ${scan.summary.navigation.httpStatus}` : ""}
+                </p>
+                <p className="field-hint">
+                  The screenshot and findings describe what the browser received — not necessarily your intended site.
+                </p>
+              </Notice>
+            ) : null}
             <dl className="scan-result-stats">
               <div><dt>Findings</dt><dd data-testid="scan-result-findings">{formatCount(scan.summary.findingCount)}</dd></div>
               {scan.summary.byClassification ? (
@@ -107,8 +169,22 @@ export function ScanProgress({ scan, onRetry }: { scan: ScanJobView; onRetry?: (
               </div>
             </dl>
             <p className="field-hint">
-              {plural(scan.summary.viewportIssueCount, "viewport")} with horizontal overflow
-              {duration(scan) ? ` · finished in ${duration(scan)}` : ""}.{" "}
+              {scan.summary.scanTrust === "http_error" || scan.summary.scanTrust === "network_error" ? (
+                <>
+                  Horizontal overflow counts describe the page the server returned (HTTP error or failed load), not necessarily the site you intended
+                  {duration(scan) ? ` · finished in ${duration(scan)}` : ""}.{" "}
+                </>
+              ) : scan.summary.scanTrust === "challenge_uncertain" ? (
+                <>
+                  {plural(scan.summary.viewportIssueCount, "viewport")} with horizontal overflow (content may be an interstitial)
+                  {duration(scan) ? ` · finished in ${duration(scan)}` : ""}.{" "}
+                </>
+              ) : (
+                <>
+                  {plural(scan.summary.viewportIssueCount, "viewport")} with horizontal overflow
+                  {duration(scan) ? ` · finished in ${duration(scan)}` : ""}.{" "}
+                </>
+              )}
               {scan.summary.truncated ? "Some results were truncated by reporting limits — the report says where. " : ""}
               {scan.baseline
                 ? `Compared with baseline “${scan.baseline.name}”: ${scan.summary.visualFailures ?? 0} viewport(s) differ.`

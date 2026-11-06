@@ -28,6 +28,26 @@ program
   .argument("<url>", "Page URL to scan (http/https or file://)")
   .option("--no-headless", "Show the browser window while scanning")
   .option(
+    "--nav-timeout-ms <ms>",
+    "Playwright page.goto timeout (waitUntil: domcontentloaded)",
+    (value) => parseInt(value, 10),
+  )
+  .option(
+    "--readiness-timeout-ms <ms>",
+    "Timeout for waiting for the load event after DOMContentLoaded",
+    (value) => parseInt(value, 10),
+  )
+  .option(
+    "--screenshot-timeout-ms <ms>",
+    "Timeout for each viewport screenshot capture",
+    (value) => parseInt(value, 10),
+  )
+  .option(
+    "--post-load-settle-ms <ms>",
+    "Bounded wait after load (or partial recovery) before measurement",
+    (value) => parseInt(value, 10),
+  )
+  .option(
     "-H, --height <pixels>",
     "Viewport height in pixels",
     (value) => parseInt(value, 10),
@@ -60,6 +80,10 @@ program
         output?: string;
         baselineDir?: string;
         visualConfig?: string;
+        navTimeoutMs?: number;
+        readinessTimeoutMs?: number;
+        screenshotTimeoutMs?: number;
+        postLoadSettleMs?: number;
       },
     ) => {
       const format = options.format as OutputFormat;
@@ -85,6 +109,18 @@ program
           format,
           options.output,
         );
+        const timeouts =
+          options.navTimeoutMs !== undefined ||
+          options.readinessTimeoutMs !== undefined ||
+          options.screenshotTimeoutMs !== undefined ||
+          options.postLoadSettleMs !== undefined
+            ? {
+                ...(options.navTimeoutMs !== undefined ? { navigationMs: options.navTimeoutMs } : {}),
+                ...(options.readinessTimeoutMs !== undefined ? { readinessMs: options.readinessTimeoutMs } : {}),
+                ...(options.screenshotTimeoutMs !== undefined ? { screenshotMs: options.screenshotTimeoutMs } : {}),
+                ...(options.postLoadSettleMs !== undefined ? { postLoadSettleMs: options.postLoadSettleMs } : {}),
+              }
+            : undefined;
         const result = await scanUrl({
           url,
           viewportHeight: options.height,
@@ -104,6 +140,7 @@ program
                 },
               }
             : {}),
+          ...(timeouts ? { timeouts } : {}),
         });
         const exitCode = await emitScanResult(result, {
           format,

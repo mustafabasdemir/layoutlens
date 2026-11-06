@@ -5,6 +5,7 @@ import { preferLeafCulprits } from "./findings.js";
 const finding = (
   partial: Partial<OverflowFinding> & Pick<OverflowFinding, "selector" | "depth">,
 ): OverflowFinding => ({
+  id: "overflow:390:0",
   tagName: "div",
   severity: "medium",
   overflowPx: 0,

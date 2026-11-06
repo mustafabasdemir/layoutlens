@@ -30,7 +30,7 @@ function minimalReport(options: {
   currentPath: string;
 }): JsonReport {
   return {
-    schemaVersion: "1.0",
+      schemaVersion: "1.3",
     tool: "layoutlens",
     url: "https://compare.test/",
     scannedAt: "2026-01-01T00:00:00.000Z",

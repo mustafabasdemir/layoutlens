@@ -76,8 +76,8 @@ export function NewScanPage() {
               <Badge>Set in the baseline's visual.config.json</Badge>
             </div>
             <div className="unsupported">
-              <span>Navigation timeout</span>
-              <Badge>Fixed at 30 s per viewport</Badge>
+              <span>Per-stage timeouts</span>
+              <Badge>Navigation, load readiness, and screenshots (bounded by total scan limit)</Badge>
             </div>
             <div className="unsupported">
               <span>Total scan timeout</span>

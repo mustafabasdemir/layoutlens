@@ -42,7 +42,7 @@ describe("HTML report e2e", () => {
         schemaVersion: string;
         viewports: Array<{ screenshot?: string }>;
       };
-      expect(parsed.schemaVersion).toBe("1.0");
+      expect(parsed.schemaVersion).toBe("1.3");
       expect(parsed.viewports[0]?.screenshot).toBe(
         viewportScreenshotRelativePath(390),
       );

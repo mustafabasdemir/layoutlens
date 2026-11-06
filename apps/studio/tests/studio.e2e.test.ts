@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closeTo, COLORS, FIXTURE_URL, sampleColor, writeFixtureReport } from "./fixture";
+import type { JsonReport } from "@layoutlens/shared";
 
 const appRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -345,6 +346,52 @@ describe("Report workspace", () => {
     const scale2 = imgBox2.width / 390;
     expect(Math.abs(box2.x - imgBox2.x - 50 * scale2)).toBeLessThanOrEqual(3);
     expect(Math.abs(box2.y - imgBox2.y - 100 * scale2)).toBeLessThanOrEqual(3);
+    await context.close();
+  });
+
+  it("inspector mode selects a nested button, cycles candidates, opens a related finding, and exits with Escape", async () => {
+    const { context, page } = await openPage();
+    await loadFixture(page);
+    const img = page.getByTestId("workspace-screenshot");
+    await page.getByTestId("workspace-inspector-toggle").click();
+    expect(await page.getByTestId("workspace-inspector-toggle").getAttribute("aria-pressed")).toBe("true");
+
+    const box = (await img.boundingBox())!;
+    await img.click({ position: { x: (66 / 390) * box.width, y: (128 / 844) * box.height } });
+
+    await expect
+      .poll(
+        async () =>
+          (await page.getByTestId("element-inspector-panel").locator(".inspector-selector").first().textContent()) ?? "",
+        { timeout: 15_000 },
+      )
+      .toContain("#fixture-child-btn");
+
+    await page.getByRole("button", { name: /^Open in list$/ }).click();
+    expect(await page.locator('.finding-card-overflow[data-finding="390:1"]').first().getAttribute("aria-pressed")).toBe("true");
+
+    await page.getByRole("button", { name: "Next target" }).click();
+    expect(await page.getByTestId("element-inspector-panel").locator(".inspector-selector").first().textContent()).toContain("#fixture-wrap");
+
+    await page.keyboard.press("Escape");
+    expect(await page.getByTestId("workspace-inspector-toggle").getAttribute("aria-pressed")).toBe("false");
+    await context.close();
+  });
+
+  it("inspector mode is unavailable when the report omits inspector data", async () => {
+    const { context, page } = await openPage();
+    const dir = await mkdtemp(join(tmpdir(), "ll-no-inspector-"));
+    await writeFixtureReport(dir);
+    const raw = JSON.parse(await readFile(join(dir, "report.json"), "utf8")) as JsonReport;
+    for (const v of raw.viewports) delete v.inspector;
+    await writeFile(join(dir, "report.json"), JSON.stringify(raw, null, 2));
+
+    await page.goto(`${baseUrl}#/reports`);
+    await page.getByTestId("report-folder-input").first().setInputFiles(dir);
+    await page.locator(".report-header").waitFor();
+    await page.getByTestId("workspace-screenshot").waitFor();
+    expect(await page.getByTestId("workspace-inspector-toggle").isDisabled()).toBe(true);
+    await rm(dir, { recursive: true, force: true });
     await context.close();
   });
 

@@ -1,10 +1,14 @@
 import type { JsonReport, ScanResult } from "@layoutlens/shared";
 import { REPORT_SCHEMA_VERSION } from "@layoutlens/shared";
+import { navigationQuality } from "./navigation.js";
 
 export function scanResultToJsonReport(result: ScanResult): JsonReport {
   const visualByWidth = new Map(
     (result.visual?.comparisons ?? []).map((c) => [c.width, c]),
   );
+
+  const nav = result.navigation ?? result.summary.navigation;
+  const scanTrust = nav ? navigationQuality(nav) : result.summary.scanTrust;
 
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
@@ -30,7 +34,25 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
       ...(result.summary.visualFailures !== undefined
         ? { visualFailures: result.summary.visualFailures }
         : {}),
+      ...(result.summary.viewportInspectionCompleteCount !== undefined
+        ? { viewportInspectionCompleteCount: result.summary.viewportInspectionCompleteCount }
+        : {}),
+      ...(result.summary.viewportInspectionFailedCount !== undefined
+        ? { viewportInspectionFailedCount: result.summary.viewportInspectionFailedCount }
+        : {}),
+      ...(result.summary.viewportInspectionSkippedCount !== undefined
+        ? { viewportInspectionSkippedCount: result.summary.viewportInspectionSkippedCount }
+        : {}),
+      ...(result.summary.scanCompletionStatus
+        ? { scanCompletionStatus: result.summary.scanCompletionStatus }
+        : {}),
+      ...(result.summary.viewportOutcomes
+        ? { viewportOutcomes: [...result.summary.viewportOutcomes] }
+        : {}),
+      ...(nav ? { navigation: nav, scanTrust } : {}),
     },
+    ...(nav ? { navigation: nav } : {}),
+    ...(result.navigationDiagnostics ? { navigationDiagnostics: result.navigationDiagnostics } : {}),
     viewports: result.viewports.map((v) => {
       const visual = visualByWidth.get(v.width);
       return {
@@ -41,6 +63,9 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
         documentClientWidth: v.documentClientWidth,
         hasHorizontalOverflow: v.hasHorizontalOverflow,
         overflowPx: v.overflowPx,
+        ...(v.inspectionStatus !== undefined ? { inspectionStatus: v.inspectionStatus } : {}),
+        ...(v.inspection ? { inspection: { ...v.inspection } } : {}),
+        ...(v.inspectionError ? { inspectionError: { ...v.inspectionError } } : {}),
         ...(v.screenshot !== undefined ? { screenshot: v.screenshot } : {}),
         ...(visual
           ? {
@@ -58,6 +83,7 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
             }
           : {}),
         findings: v.findings.map((f) => ({
+          id: f.id,
           selector: f.selector,
           tagName: f.tagName,
           severity: f.severity,
@@ -79,6 +105,7 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
           related: f.related.map((r) => ({ ...r, boundingBox: { ...r.boundingBox } })),
           relatedCount: f.relatedCount,
         })),
+        ...(v.inspector ? { inspector: v.inspector } : {}),
         excluded: v.excluded.map((e) => ({
           ...e,
           boundingBox: { ...e.boundingBox },

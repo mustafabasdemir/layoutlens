@@ -49,6 +49,7 @@ const baseResult: ScanResult = {
 };
 
 const finding: OverflowFinding = {
+  id: "overflow:390:0",
   tagName: "div",
   selector: "#x",
   selectorMatches: 1,
@@ -144,7 +145,7 @@ describe("renderScanOutput", () => {
   it("returns valid JSON with schema version", () => {
     const json = renderScanOutput(baseResult, "json");
     const parsed = JSON.parse(json) as { schemaVersion: string; tool: string };
-    expect(parsed.schemaVersion).toBe("1.0");
+    expect(parsed.schemaVersion).toBe("1.3");
     expect(parsed.tool).toBe("layoutlens");
   });
 });

@@ -41,6 +41,7 @@ const sample: ScanResult = {
       overflowPx: 110,
       findings: [
         {
+          id: "overflow:390:0",
           tagName: "div",
           selector: "#wide",
           severity: "high",
@@ -88,7 +89,7 @@ describe("serializeJsonReport", () => {
       summary: { findingCount: number };
       viewports: Array<{ findings: Array<{ boundingBox: { width: number } }> }>;
     };
-    expect(parsed.schemaVersion).toBe("1.0");
+    expect(parsed.schemaVersion).toBe("1.3");
     expect(parsed.summary.findingCount).toBe(1);
     expect(parsed.viewports[0]?.findings[0]?.boundingBox.width).toBe(500);
   });

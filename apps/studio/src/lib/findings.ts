@@ -57,11 +57,14 @@ export function deviceName(width: number, label?: string): string {
   return "Desktop";
 }
 
-export type ReportHealth = "clean" | "issues" | "review" | "visual-changes";
+export type ReportHealth = "clean" | "issues" | "review" | "visual-changes" | "http-response" | "challenge-page";
 
 /** Report-level status that never claims more than the evidence supports. */
 export function reportHealth(report: JsonReport): ReportHealth {
   const s = report.summary;
+  const trust = s.scanTrust;
+  if (trust === "http_error" || trust === "network_error") return "http-response";
+  if (trust === "challenge_uncertain") return "challenge-page";
   if (s.byClassification) {
     if (s.byClassification.confirmed > 0) return "issues";
     if (s.byClassification.potential > 0 || s.byClassification.insufficientEvidence > 0) return "review";

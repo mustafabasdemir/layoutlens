@@ -1,4 +1,8 @@
-import type { JsonReportSummary } from "./report.js";
+import type { JsonReportSummary, JsonReport, ScanNavigation } from "./report.js";
+
+type JsonReportSummaryWithNav = JsonReportSummary & { navigation?: ScanNavigation };
+type StoredScanSummary = JsonReportSummaryWithNav &
+  Partial<Pick<JsonReport, "navigationDiagnostics">>;
 
 /** Contract between LayoutLens Studio and the local scanning API (`@layoutlens/server`). */
 
@@ -36,7 +40,7 @@ export interface ScanJobView {
   /** Baseline used for visual comparison, when a compatible one existed. */
   baseline?: ScanJobBaseline;
   /** Present once the report has been written. */
-  summary?: JsonReportSummary & { viewportWidths: number[] };
+  summary?: StoredScanSummary & { viewportWidths: number[] };
 }
 
 export interface CreateScanRequestBody {

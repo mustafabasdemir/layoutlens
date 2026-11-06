@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, type PointerEvent, type ReactNode } from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { useElementSize } from "./hooks";
 import { IconButton } from "./primitives";
@@ -26,25 +26,28 @@ export function ZoomControls({
   zoom,
   onZoom,
   label = "Screenshot zoom",
+  disabled,
 }: {
   zoom: number;
   onZoom(z: number): void;
   label?: string;
+  disabled?: boolean;
 }) {
+  const d = disabled === true;
   return (
     <div className="zoom-controls" role="group" aria-label={label}>
-      <IconButton label="Zoom out" onClick={() => onZoom(nextZoom(zoom, -1))} disabled={zoom <= ZOOM_STEPS[0]}>
+      <IconButton label="Zoom out" onClick={() => onZoom(nextZoom(zoom, -1))} disabled={d || zoom <= ZOOM_STEPS[0]}>
         <ZoomOut size={15} />
       </IconButton>
       <output className="zoom-level" aria-live="polite">{Math.round(zoom * 100)}%</output>
       <IconButton
         label="Zoom in"
         onClick={() => onZoom(nextZoom(zoom, 1))}
-        disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]!}
+        disabled={d || zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]!}
       >
         <ZoomIn size={15} />
       </IconButton>
-      <IconButton label="Fit to view" onClick={() => onZoom(1)} disabled={zoom === 1}>
+      <IconButton label="Fit to view" onClick={() => onZoom(1)} disabled={d || zoom === 1}>
         <Maximize2 size={14} />
       </IconButton>
     </div>
@@ -62,12 +65,15 @@ export function ZoomFrame({
   pannable = true,
   children,
   label,
+  canStartPan,
 }: {
   natural: { width: number; height: number };
   zoom: number;
   pannable?: boolean;
   children: ReactNode;
   label: string;
+  /** When set, return false to block starting a pan drag (e.g. inspector clicks). Modifier+pan still works if implemented by caller returning true for shiftKey. */
+  canStartPan?: (e: PointerEvent<HTMLDivElement>) => boolean;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const size = useElementSize(viewportRef);
@@ -85,6 +91,7 @@ export function ZoomFrame({
       tabIndex={zoom > 1 ? 0 : -1}
       onPointerDown={(e) => {
         if (!canPan || e.button !== 0) return;
+        if (canStartPan && !canStartPan(e)) return;
         const el = viewportRef.current;
         if (!el) return;
         drag.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop, id: e.pointerId };

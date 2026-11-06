@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { designTokensCss } from "./design-tokens.js";
 import { explainFinding, findingKinds } from "./finding-insights.js";
-import { mapBoxToScreenshot } from "./overlay-geometry.js";
+import { mapBoxToScreenshot, screenshotPointerToLayoutViewportCss } from "./overlay-geometry.js";
 import type { JsonReportFinding } from "./report.js";
 
 const viewport = { width: 390, viewportHeight: 844 };
@@ -51,6 +51,18 @@ describe("mapBoxToScreenshot", () => {
       { naturalWidth: 390, naturalHeight: 844 },
     );
     expect(m.status).toBe("outside");
+  });
+
+  it("maps image pointer to layout viewport CSS (DPR 2)", () => {
+    const p = screenshotPointerToLayoutViewportCss(
+      390,
+      422,
+      { width: 390, height: 844 },
+      { naturalWidth: 780, naturalHeight: 1688 },
+      viewport,
+    );
+    expect(p.x).toBeCloseTo(390);
+    expect(p.y).toBeCloseTo(422);
   });
 
   it("refuses to map without image dimensions", () => {

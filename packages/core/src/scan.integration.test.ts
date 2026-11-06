@@ -8,6 +8,8 @@ import { scanUrl, viewportScreenshotRelativePath } from "./scan.js";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const exampleIndex = join(repoRoot, "examples/broken-layout/index.html");
 const exampleUrl = pathToFileURL(exampleIndex).href;
+const inspectorIndex = join(repoRoot, "examples/inspector-simple/index.html");
+const inspectorUrl = pathToFileURL(inspectorIndex).href;
 
 describe("scanUrl integration", () => {
   it(
@@ -51,5 +53,26 @@ describe("scanUrl integration", () => {
       }
     },
     60_000,
+  );
+
+  it(
+    "collects inspector snapshot when inspector.enabled",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "layoutlens-insp-"));
+      const result = await scanUrl({
+        url: inspectorUrl,
+        headless: true,
+        artifacts: { directory: dir },
+        inspector: { enabled: true, maxElements: 200, maxHitTestSamples: 400 },
+      });
+      const mobile = result.viewports.find((v) => v.width === 390);
+      expect(mobile?.inspector).toBeDefined();
+      const snap = mobile?.inspector!;
+      expect(snap.meta.version).toBe(1);
+      expect(snap.elements.length).toBeGreaterThan(3);
+      expect(snap.meta.collectionDurationMs).toBeGreaterThanOrEqual(0);
+      expect(snap.hitTest?.samples.length).toBeGreaterThan(0);
+    },
+    90_000,
   );
 });
