@@ -245,8 +245,3 @@ No release dates are committed here.
 
 Issues and pull requests are welcome. Please run `pnpm lint` and `pnpm test` before submitting substantial changes.
 
----
-
-## License
-
-[MIT License](LICENSE) — Copyright (c) 2026 Mustafa Basdemir
