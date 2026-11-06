@@ -11,6 +11,13 @@ import {
   reportHealth,
   type FindingFilters,
 } from "../../lib/findings";
+import {
+  advancedRefsForViewport,
+  overflowRefsForViewport,
+  workspaceKey,
+  type OverflowFindingRef,
+  type WorkspaceFindingRef,
+} from "../../lib/workspace-findings";
 import { displayUrl, formatDateTime, plural } from "../../lib/format";
 import { useImageSize } from "../../ui/hooks";
 import { Badge, Button, Card, Notice } from "../../ui/primitives";
@@ -18,7 +25,8 @@ import { ZoomControls } from "../../ui/ZoomFrame";
 import { DeviceTabs } from "./DeviceTabs";
 import { FindingsPanel } from "./FindingsPanel";
 import { IssueDetail } from "./IssueDetail";
-import { overlayFor, ScreenshotViewer } from "./ScreenshotViewer";
+import { AdvancedIssueDetail } from "./AdvancedIssueDetail";
+import { overlayForWorkspace, ScreenshotViewer } from "./ScreenshotViewer";
 
 const HEALTH = {
   clean: { tone: "success", label: "No overflow detected" },
@@ -114,12 +122,25 @@ export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onC
   }, [loaded.id, firstWidth]);
 
   const viewport = report.viewports.find((v) => v.width === width) ?? report.viewports[0];
-  const all = useMemo(() => (viewport ? findingsForViewport(report, viewport.width) : []), [report, viewport]);
-  const visible = useMemo(() => filterFindings(all, filters), [all, filters]);
+  const allOverflow = useMemo(
+    () => (viewport ? findingsForViewport(report, viewport.width) : []),
+    [report, viewport],
+  );
+  const visibleOverflow = useMemo(() => filterFindings(allOverflow, filters), [allOverflow, filters]);
+  const advancedRefs = useMemo(
+    () => (viewport ? advancedRefsForViewport(report, viewport.width) : []),
+    [report, viewport],
+  );
+  const workspaceRefs = useMemo((): WorkspaceFindingRef[] => {
+    if (!viewport) return [];
+    const o = overflowRefsForViewport(report, viewport.width);
+    return [...o, ...advancedRefs];
+  }, [report, viewport, advancedRefs]);
+
   const src = viewport ? loaded.resolveAsset(viewport.screenshot) : null;
   const image = useImageSize(src);
 
-  const firstVisibleKey = visible[0] ? findingKey(visible[0]) : null;
+  const firstVisibleKey = visibleOverflow[0] ? findingKey(visibleOverflow[0]) : advancedRefs[0] ? workspaceKey(advancedRefs[0]) : null;
   useEffect(() => {
     setSelectedKey(firstVisibleKey);
     setZoom(1);
@@ -129,8 +150,16 @@ export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onC
     return <ReportHeader loaded={loaded} onClose={onClose} />;
   }
 
-  const selected = all.find((r) => findingKey(r) === selectedKey) ?? null;
-  const mapping = selected && image.status === "loaded" ? overlayFor(selected, viewport, image) : null;
+  const selectedOverflowRef =
+    workspaceRefs.find((r): r is OverflowFindingRef => r.kind === "overflow" && workspaceKey(r) === selectedKey) ?? null;
+  const selectedAdvanced = advancedRefs.find((r) => workspaceKey(r) === selectedKey) ?? null;
+  const selectedOverflowForDetail = selectedOverflowRef
+    ? { viewportWidth: selectedOverflowRef.viewportWidth, index: selectedOverflowRef.index, finding: selectedOverflowRef.finding }
+    : null;
+  const mapping =
+    (selectedOverflowRef || selectedAdvanced) && image.status === "loaded"
+      ? overlayForWorkspace(selectedOverflowRef ?? selectedAdvanced!, viewport, image)
+      : null;
 
   return (
     <div className="workspace">
@@ -167,7 +196,7 @@ export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onC
             src={src}
             image={image}
             viewport={viewport}
-            findings={visible}
+            workspaceRefs={workspaceRefs}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
             zoom={zoom}
@@ -177,8 +206,9 @@ export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onC
         <div className="side-col">
           <Card className="findings-card">
             <FindingsPanel
-              all={all}
-              visible={visible}
+              all={allOverflow}
+              visible={visibleOverflow}
+              advancedRefs={advancedRefs}
               filters={filters}
               onFilters={setFilters}
               selectedKey={selectedKey}
@@ -187,7 +217,13 @@ export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onC
             />
           </Card>
           <Card className="detail-card">
-            <IssueDetail selected={selected} viewport={viewport} mapping={mapping} />
+            {selectedOverflowForDetail ? (
+              <IssueDetail selected={selectedOverflowForDetail} viewport={viewport} mapping={mapping} />
+            ) : selectedAdvanced ? (
+              <AdvancedIssueDetail finding={selectedAdvanced.finding} viewport={viewport} mapping={mapping} />
+            ) : (
+              <IssueDetail selected={null} viewport={viewport} mapping={null} />
+            )}
           </Card>
         </div>
       </div>

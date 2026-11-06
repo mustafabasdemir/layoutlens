@@ -579,7 +579,8 @@ a { color: inherit; }
 .findings { display: grid; gap: var(--ll-space-3); }
 .findings-filters { display: flex; gap: var(--ll-space-2); flex-wrap: wrap; align-items: center; }
 .finding-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ll-space-2); max-height: 420px; overflow-y: auto; }
-.finding-card {
+.finding-card-overflow,
+.finding-card-advanced {
   width: 100%; text-align: left;
   display: grid; gap: 6px;
   padding: var(--ll-space-3);
@@ -590,8 +591,10 @@ a { color: inherit; }
   font: inherit; cursor: pointer;
   transition: border-color var(--ll-duration) var(--ll-ease), background var(--ll-duration) var(--ll-ease);
 }
-.finding-card:hover { background: var(--ll-surface-hover); }
-.finding-card[aria-pressed="true"] { border-color: var(--ll-accent); background: color-mix(in srgb, var(--ll-accent) 8%, var(--ll-surface-elevated)); }
+.finding-card-overflow:hover,
+.finding-card-advanced:hover { background: var(--ll-surface-hover); }
+.finding-card-overflow[aria-pressed="true"],
+.finding-card-advanced[aria-pressed="true"] { border-color: var(--ll-accent); background: color-mix(in srgb, var(--ll-accent) 8%, var(--ll-surface-elevated)); }
 .finding-top { display: flex; gap: 6px; flex-wrap: wrap; }
 .finding-selector { color: var(--ll-text); font-size: var(--ll-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finding-text { font-size: var(--ll-text-sm); color: var(--ll-text-secondary); }
@@ -627,8 +630,11 @@ a { color: inherit; }
 .related-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--ll-text-xs); max-height: 200px; overflow-y: auto; }
 .related-list li { display: grid; gap: 2px; padding: 6px 8px; border-radius: var(--ll-radius-sm); background: var(--ll-surface-elevated); min-width: 0; }
 .related-list code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.advanced-item { display: grid; gap: 4px; padding: var(--ll-space-2); border-radius: var(--ll-radius-sm); background: var(--ll-surface-elevated); min-width: 0; list-style: none; }
-.advanced-list { margin-top: var(--ll-space-2); }
+.panel-subtitle { font-size: var(--ll-text-sm); font-weight: 600; margin: 0 0 var(--ll-space-1); }
+.findings-section-label { list-style: none; padding: var(--ll-space-2) 0 0; border-top: 1px solid var(--ll-border); margin-top: var(--ll-space-2); }
+.findings-section-label .field-hint { margin: 0; }
+.finding-card-advanced { border-style: dashed; }
+.shot-box-advanced { outline-style: dashed; }
 
 .empty-card, .summary-empty { padding: var(--ll-space-2); }
 .findings-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ll-space-2); }

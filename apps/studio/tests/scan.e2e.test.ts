@@ -115,14 +115,14 @@ describe("Scan Website runs a real local scan", () => {
       "768",
       "1440",
     ]);
-    expect(await page.locator("button.finding-card").filter({ hasText: "#wide-banner" }).count()).toBe(1);
+    expect(await page.locator("button.finding-card-overflow").filter({ hasText: "#wide-banner" }).count()).toBe(1);
     expect(await page.getByTestId("count-confirmed").textContent()).toBe(String(findings));
-    expect(await page.locator('button.finding-card[data-classification="confirmed"]').count()).toBe(
-      await page.locator("button.finding-card").count(),
+    expect(await page.locator('button.finding-card-overflow[data-classification="confirmed"]').count()).toBe(
+      await page.locator("button.finding-card-overflow").count(),
     );
     const tabBadge = await page.locator('#ws-tab-390 .device-badge').textContent();
-    expect(tabBadge).toBe(String(await page.locator("button.finding-card").count()));
-    await page.locator(".finding-card").filter({ hasText: "#wide-banner" }).click();
+    expect(tabBadge).toBe(String(await page.locator("button.finding-card-overflow").count()));
+    await page.locator(".finding-card-overflow").filter({ hasText: "#wide-banner" }).click();
     expect(await page.getByTestId("detail-reason").textContent()).toContain("no ancestor clips it");
     expect(await page.locator('.shot-box.is-selected').count()).toBe(1);
 
@@ -222,7 +222,7 @@ describe("Scan Website runs a real local scan", () => {
 
     await page.getByRole("button", { name: "View results" }).click();
     await page.getByTestId("workspace-screenshot").waitFor();
-    expect(await page.locator(".finding-card").count()).toBe(0);
+    expect(await page.locator(".finding-card-overflow").count()).toBe(0);
     expect(await page.locator("#ws-tab-390 .device-badge").count()).toBe(0);
     expect(await page.locator(".report-header .badge").first().textContent()).toBe("No overflow detected");
     const excluded = page.getByTestId("excluded-list");
@@ -241,7 +241,7 @@ describe("Scan Website runs a real local scan", () => {
     await expect.poll(() => progressCard(page).getAttribute("data-state"), { timeout: 90_000 }).toBe("completed");
     await page.getByRole("button", { name: "View results" }).click();
     await page.getByTestId("workspace-screenshot").waitFor();
-    const card = page.locator(".finding-card").filter({ hasText: "#blob-leak" });
+    const card = page.locator(".finding-card-overflow").filter({ hasText: "#blob-leak" });
     await card.click();
     expect(await page.getByTestId("screenshot-evidence").textContent()).toContain("only the visible part (100px of 260px)");
     const box = page.locator(".shot-box.is-selected");

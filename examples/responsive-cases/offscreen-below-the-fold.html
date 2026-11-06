@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offscreen — below the fold only (negative)</title>
+  <style>
+    body { margin: 0; overflow-x: hidden; min-height: 300vh; }
+    #far {
+      position: absolute; left: 20px; top: 220vh; padding: 8px 12px;
+    }
+  </style>
+</head>
+<body>
+  <p style="padding: 12px">Scroll down — the button is not in the first viewport.</p>
+  <button type="button" id="far">Way down</button>
+</body>
+</html>

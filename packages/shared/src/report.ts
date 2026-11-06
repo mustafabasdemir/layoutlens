@@ -74,6 +74,9 @@ export interface JsonReportAdvancedFinding {
   textClip?: TextClipEvidence;
   offscreenControl?: OffscreenControlEvidence;
   touchTarget?: TouchTargetEvidence;
+  related?: import("./responsive.js").AdvancedRelatedSample[];
+  relatedCount?: number;
+  groupKey?: string;
 }
 
 export interface JsonReportViewport {

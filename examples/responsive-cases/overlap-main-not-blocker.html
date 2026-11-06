@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Overlap — main must not be used as overlap blocker</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    main { min-height: 200vh; padding: 16px; }
+    #floater {
+      position: fixed; bottom: 24px; right: 24px; z-index: 3;
+      padding: 12px 20px; background: #0a0; color: #fff; border: 0; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p>Long main content. A fixed button should not pair with &lt;main&gt; as overlap blocker.</p>
+    <button type="button" id="floater">Floating action</button>
+  </main>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import {
   capSeverity,
   type AdvancedFinding,
+  type AdvancedRelatedSample,
   type AdvancedViewportAnalysis,
   type ClippingContext,
   type DetectionConfig,
@@ -39,22 +40,34 @@ function clippingFrom(
 }
 
 function classifyOverlap(raw: RawOverlapCandidate): AdvancedFinding | null {
+  const consent = raw.likelyConsentOverlay;
   let classification: FindingClassification = "potential";
-  if (raw.hitTestBlocked && raw.coverageRatio >= 0.25) classification = "confirmed";
-  else if (!raw.hitTestBlocked) {
+  if (raw.hitTestBlocked && raw.coverageRatio >= 0.25) {
+    /** Real hit interception; CMP/cookie layers are usually intentional — do not mark "confirmed layout defect". */
+    classification = consent ? "potential" : "confirmed";
+  } else if (!raw.hitTestBlocked) {
     if (raw.coverageRatio < 0.45) return null;
     classification = "potential";
   } else if (raw.coverageRatio < 0.35) return null;
 
   const severity = capSeverity(
     classification,
-    raw.hitTestBlocked && raw.coverageRatio >= 0.5 ? "high" : raw.coverageRatio >= 0.35 ? "medium" : "low",
+    consent
+      ? "low"
+      : raw.hitTestBlocked && raw.coverageRatio >= 0.5
+        ? "high"
+        : raw.coverageRatio >= 0.35
+          ? "medium"
+          : "low",
   );
 
   const pct = Math.round(raw.coverageRatio * 100);
+  const consentNote = consent
+    ? " Blocker looks like a cookie/consent overlay (fixed, full-width) — interaction is blocked until the user acts; this is usually by design, not a layout bug."
+    : "";
   const reason = raw.hitTestBlocked
-    ? `${pct}% of this ${raw.targetTag} is covered by ${raw.blockerSelector} (${raw.blockerPosition}, z-index ${raw.blockerZIndex}), and pointer hit-tests hit the blocker instead.`
-    : `${pct}% of this ${raw.targetTag} overlaps ${raw.blockerSelector} — verify whether clicks still reach the control.`;
+    ? `${pct}% of this ${raw.targetTag} is covered by ${raw.blockerSelector} (${raw.blockerPosition}, z-index ${raw.blockerZIndex}), and pointer hit-tests hit the blocker instead.${consentNote}`
+    : `${pct}% of this ${raw.targetTag} overlaps ${raw.blockerSelector} — verify whether clicks still reach the control.${consentNote}`;
 
   return {
     id: makeId("overlap", raw.targetSelector, raw.targetRect.x, raw.targetRect.y),
@@ -65,7 +78,9 @@ function classifyOverlap(raw: RawOverlapCandidate): AdvancedFinding | null {
     severity,
     classification,
     reason,
-    guidance: "Check whether the overlapping layer is intentional (badge, sticky header) or blocks interaction.",
+    guidance: consent
+      ? "Cookie banners intentionally block the page until accepted; treat as advisory unless the banner cannot be dismissed."
+      : "Check whether the overlapping layer is intentional (badge, sticky header) or blocks interaction.",
     boundingBox: raw.targetRect,
     visibleBox: raw.targetVisible,
     overlap: {
@@ -79,6 +94,7 @@ function classifyOverlap(raw: RawOverlapCandidate): AdvancedFinding | null {
       blockerPosition: raw.blockerPosition,
       targetZIndex: String(raw.targetZIndex),
       blockerZIndex: String(raw.blockerZIndex),
+      ...(consent ? { likelyConsentOverlay: true } : {}),
     },
   };
 }
@@ -89,14 +105,41 @@ function classifyTextClip(raw: RawTextClipCandidate): AdvancedFinding | null {
   const vOver = raw.scrollHeight - raw.clientHeight;
   if (hOver <= 1.5 && vOver <= 1.5) return null;
 
-  if (raw.intentional && raw.textOverflow === "ellipsis") return null;
-  if (raw.intentional && raw.lineClamp !== null && raw.lineClamp > 0 && hOver <= 40 && vOver <= 40) return null;
-  let classification: FindingClassification = "potential";
-  if (hOver > 8 || vOver > 8) {
-    classification = raw.inScrollContainer ? "insufficient-evidence" : "confirmed";
+  const lh = raw.lineHeightPx > 0 ? raw.lineHeightPx : raw.fontSizePx * 1.2;
+  const minHorizSig = 3;
+  const minVertSig = Math.max(4, lh * 0.15);
+  const horizSignificant = hOver > minHorizSig;
+  const vertSignificant = vOver > minVertSig;
+  if (!horizSignificant && !vertSignificant) return null;
+
+  /** Sub-pixel / line-box slack: tiny vertical overflow with normal wrapping is usually not user-visible clipping. */
+  if (
+    !horizSignificant &&
+    vertSignificant &&
+    vOver <= lh * 0.4 &&
+    raw.whiteSpace !== "nowrap" &&
+    raw.overflowX === "visible" &&
+    raw.overflowY === "visible"
+  ) {
+    return null;
   }
 
-  const severity = capSeverity(classification, hOver > 24 || vOver > 24 ? "medium" : "low");
+  if (raw.intentional && raw.textOverflow === "ellipsis") return null;
+  if (raw.intentional && raw.lineClamp !== null && raw.lineClamp > 0 && hOver <= 40 && vOver <= 40) return null;
+  /** Design-time ellipsis / line-clamp: ignore small residual overflow. */
+  if (raw.intentional && hOver <= 12 && vOver <= 12) return null;
+  let classification: FindingClassification = "potential";
+  const strongClip = horizSignificant ? hOver > 8 : vOver > Math.max(8, lh * 0.55);
+  if (strongClip) {
+    classification = raw.inScrollContainer ? "insufficient-evidence" : "confirmed";
+  } else if (!raw.intentional) {
+    classification = "potential";
+  }
+
+  const severity = capSeverity(
+    classification,
+    hOver > 24 || vOver > Math.max(24, lh * 1.2) ? "medium" : "low",
+  );
 
   const reason = raw.intentional
     ? `Text may be intentionally truncated (${raw.textOverflow || "line-clamp"}), but ${Math.max(hOver, vOver).toFixed(0)}px of content is still clipped inside the box.`
@@ -127,6 +170,8 @@ function classifyTextClip(raw: RawTextClipCandidate): AdvancedFinding | null {
       textOverflow: raw.textOverflow,
       lineClamp: raw.lineClamp,
       intentional: raw.intentional,
+      fontSizePx: raw.fontSizePx,
+      lineHeightPx: raw.lineHeightPx,
     },
   };
   if (raw.clipSelector) {
@@ -142,26 +187,61 @@ function isCarouselChrome(raw: RawInteractive): boolean {
   return false;
 }
 
-function classifyOffscreen(raw: RawInteractive, viewportWidth: number): AdvancedFinding | null {
+function classifyOffscreen(
+  raw: RawInteractive,
+  viewportWidth: number,
+  rootClips: boolean,
+): AdvancedFinding | null {
   if (raw.disabled || raw.invisible) return null;
+  if (raw.intentionallyHidden) return null;
+  /** Drawer / off-canvas shifted panel: touch noise only in evidence; do not list as offscreen finding. */
+  if (raw.hiddenByUi) return null;
   if (isCarouselChrome(raw)) return null;
   if (!raw.horizontalInaccessible) return null;
   if (raw.inScrollContainer) return null;
   if (raw.clipSelector && raw.clipOverflowX === "hidden" && !raw.visible) return null;
   if (raw.rect.x + raw.rect.width <= 0) return null;
+  /** Below-the-fold-only controls are reached by vertical scroll, not "horizontal offscreen" defects. */
+  if (!raw.verticalIntersectsViewport || raw.belowTheFold) return null;
   const pastEdge = raw.rect.x + raw.rect.width > viewportWidth + 5 || raw.rect.x < -5;
   if (!pastEdge) return null;
-  if (raw.visible && raw.visible.width >= 20) return null;
+  if (raw.visible && raw.visible.width >= 24) return null;
   const role = raw.role ?? raw.tagName;
 
-  let classification: FindingClassification = raw.visible ? "potential" : "confirmed";
-  if (raw.clipSelector && raw.clipOverflowX === "hidden") classification = "potential";
+  const strip = raw.visible && raw.visible.width >= 8 && raw.visible.width < 24;
+  const tinyStrip = raw.visible && raw.visible.width > 0 && raw.visible.width < 8;
+  const gone = raw.visible === null;
 
-  const severity = capSeverity(classification, "medium");
+  /** No horizontal clipping at root — document may scroll horizontally to this control. */
+  if (gone && !rootClips) return null;
 
-  const reason = raw.visible
-    ? `This ${role} is partly clipped horizontally and may be hard to reach at ${viewportWidth}px.`
-    : `This ${role} is not painted inside the ${viewportWidth}px viewport (clipped or positioned offscreen).`;
+  let classification: FindingClassification = "insufficient-evidence";
+  if (strip) {
+    classification = rootClips ? "potential" : "insufficient-evidence";
+  } else if (gone) {
+    classification = rootClips ? "confirmed" : "insufficient-evidence";
+  } else if (tinyStrip) {
+    classification = "insufficient-evidence";
+  } else {
+    return null;
+  }
+
+  let severity = capSeverity(classification, classification === "confirmed" ? "high" : classification === "potential" ? "medium" : "low");
+
+  let reason: string;
+  if (strip) {
+    reason = rootClips
+      ? `Only a ${Math.round(raw.visible!.width)}px strip of this ${role} shows at the horizontal edge while the page does not allow horizontal scrolling — it may be unreachable.`
+      : `Only a ${Math.round(raw.visible!.width)}px strip shows at the edge — the page may allow horizontal scrolling; verify whether users can reach the full control.`;
+  } else if (gone) {
+    reason = rootClips
+      ? `This ${role} lies past the ${viewportWidth}px viewport width and is not painted in view while horizontal scrolling is blocked (root overflow hidden) — likely unreachable.`
+      : `This ${role} is not painted in the horizontal viewport; horizontal scrolling may still reach it — confirm in the live page.`;
+  } else if (tinyStrip) {
+    reason = `Only a ${Math.round(raw.visible!.width)}px sliver of this ${role} is visible at the edge — insufficient evidence of a usability issue without manual testing.`;
+  } else {
+    return null;
+  }
 
   const finding: AdvancedFinding = {
     id: makeId("offscreen-control", raw.selector, raw.rect.x, raw.rect.y),
@@ -173,7 +253,9 @@ function classifyOffscreen(raw: RawInteractive, viewportWidth: number): Advanced
     classification,
     reason,
     guidance:
-      "Horizontal inaccessibility matters for controls users must tap without sideways page scroll — not for content below the fold.",
+      rootClips
+        ? "Horizontal scrolling is disabled at the root — controls past the edge may be genuinely inaccessible."
+        : "If the document scrolls horizontally, this may be reachable; if not, investigate clipping and positioning.",
     boundingBox: raw.rect,
     visibleBox: raw.visible,
     offscreenControl: {
@@ -182,6 +264,9 @@ function classifyOffscreen(raw: RawInteractive, viewportWidth: number): Advanced
       tabIndex: raw.tabIndex,
       horizontalOutside: true,
       notVisibleInViewport: raw.visible === null,
+      verticalIntersectsViewport: raw.verticalIntersectsViewport,
+      belowTheFold: raw.belowTheFold,
+      intentionallyHidden: raw.intentionallyHidden,
     },
   };
   if (raw.clipSelector) {
@@ -189,6 +274,108 @@ function classifyOffscreen(raw: RawInteractive, viewportWidth: number): Advanced
     if (c) finding.clipping = c;
   }
   return finding;
+}
+
+function groupOffscreenByClipper(findings: AdvancedFinding[]): AdvancedFinding[] {
+  const rest: AdvancedFinding[] = [];
+  const byClip = new Map<string, AdvancedFinding[]>();
+  for (const f of findings) {
+    if (
+      f.category === "offscreen-control" &&
+      f.visibleBox === null &&
+      f.clipping?.selector &&
+      (f.offscreenControl?.notVisibleInViewport ?? false)
+    ) {
+      const k = `${f.clipping.selector}:${f.clipping.overflowX}`;
+      const arr = byClip.get(k) ?? [];
+      arr.push(f);
+      byClip.set(k, arr);
+    } else {
+      rest.push(f);
+    }
+  }
+  const merged: AdvancedFinding[] = [];
+  for (const [, items] of byClip) {
+    if (items.length < 3) {
+      merged.push(...items);
+      continue;
+    }
+    items.sort((a, b) => a.boundingBox.y - b.boundingBox.y || a.boundingBox.x - b.boundingBox.x);
+    const primary = items[0]!;
+    const samples: AdvancedRelatedSample[] = items.slice(1, 11).map((s) => ({
+      selector: s.selector,
+      tagName: s.tagName,
+      boundingBox: s.boundingBox,
+    }));
+    merged.push({
+      ...primary,
+      id: `${makeId("offscreen-control", primary.clipping!.selector, primary.boundingBox.x, primary.boundingBox.y)}:grp`,
+      reason: `${items.length} controls in the same clipped container (${primary.clipping!.selector}) are not visible until that panel is opened — not separate defects.`,
+      classification: "insufficient-evidence",
+      severity: capSeverity("insufficient-evidence", "low"),
+      related: samples,
+      relatedCount: items.length,
+    });
+  }
+  return [...rest, ...merged];
+}
+
+function touchGroupKey(f: AdvancedFinding): string | null {
+  if (f.category !== "touch-target" || !f.touchTarget) return null;
+  const tt = f.touchTarget;
+  const clip = f.clipping?.selector ?? "none";
+  const tooSmall = tt.hitWidth < tt.minSizePx - 0.5 || tt.hitHeight < tt.minSizePx - 0.5;
+  if (tooSmall) {
+    /** Same container + below minimum: one advisory for many sibling chips. */
+    return `touch-small:${clip}`;
+  }
+  /** Crowded but large enough: bin geometry so similar toolbars group. */
+  const w = Math.round(tt.hitWidth / 16) * 16;
+  const h = Math.round(tt.hitHeight / 16) * 16;
+  return `touch-crowded:${clip}:${w}x${h}`;
+}
+
+function groupSimilarTouchTargets(findings: AdvancedFinding[]): AdvancedFinding[] {
+  const rest: AdvancedFinding[] = [];
+  const buckets = new Map<string, AdvancedFinding[]>();
+  for (const f of findings) {
+    const k = touchGroupKey(f);
+    if (!k) {
+      rest.push(f);
+      continue;
+    }
+    const arr = buckets.get(k) ?? [];
+    arr.push(f);
+    buckets.set(k, arr);
+  }
+  const merged: AdvancedFinding[] = [];
+  for (const [, items] of buckets) {
+    if (items.length < 3) {
+      merged.push(...items);
+      continue;
+    }
+    items.sort((a, b) => a.boundingBox.y - b.boundingBox.y || a.boundingBox.x - b.boundingBox.x);
+    const primary = items[0]!;
+    const tt = primary.touchTarget!;
+    const samples: AdvancedRelatedSample[] = items.slice(1, 11).map((s) => ({
+      selector: s.selector,
+      tagName: s.tagName,
+      boundingBox: s.boundingBox,
+    }));
+    const clipLabel = primary.clipping?.selector ?? "this viewport";
+    const gk = touchGroupKey(primary);
+    merged.push({
+      ...primary,
+      id: `${primary.id}:grp-touch`,
+      ...(gk ? { groupKey: gk } : {}),
+      reason: `${items.length} controls under ${clipLabel} share a similar ${Math.round(tt.hitWidth)}×${Math.round(tt.hitHeight)}px tap area (advisory minimum ${tt.minSizePx}px) — one responsive check, not separate defects.`,
+      classification: "potential",
+      severity: capSeverity("potential", "low"),
+      related: samples,
+      relatedCount: items.length,
+    });
+  }
+  return [...rest, ...merged];
 }
 
 function classifyTouch(raw: RawTouchCandidate, config: DetectionConfig): AdvancedFinding[] {
@@ -204,7 +391,7 @@ function classifyTouch(raw: RawTouchCandidate, config: DetectionConfig): Advance
     ? `Rendered hit area ${raw.hitWidth}×${raw.hitHeight}px is below the ${min}×${min}px advisory minimum.`
     : `Nearest independent control is only ${raw.spacingToNearestPx}px away (advisory minimum gap ${gap}px).`;
 
-  out.push({
+  const finding: AdvancedFinding = {
     id: makeId("touch-target", raw.selector, raw.rect.x, raw.rect.y),
     category: "touch-target",
     tagName: raw.tagName,
@@ -225,7 +412,12 @@ function classifyTouch(raw: RawTouchCandidate, config: DetectionConfig): Advance
       rule,
       disabled: raw.disabled,
     },
-  });
+  };
+  if (raw.clipSelector) {
+    const c = clippingFrom(raw.clipSelector, raw.clipOverflowX ?? "hidden", raw.rect);
+    if (c) finding.clipping = c;
+  }
+  out.push(finding);
   return out;
 }
 
@@ -260,7 +452,7 @@ export function classifyResponsiveEvidence(
 
   if (config.offscreenControls) {
     for (const i of evidence.interactives) {
-      const f = classifyOffscreen(i, V);
+      const f = classifyOffscreen(i, V, evidence.rootClips);
       if (f) candidates.push(f);
     }
   }
@@ -280,15 +472,18 @@ export function classifyResponsiveEvidence(
     deduped.push(f);
   }
 
-  deduped.sort((a, b) => {
+  const groupedOff = groupOffscreenByClipper(deduped);
+  const grouped = groupSimilarTouchTargets(groupedOff);
+
+  grouped.sort((a, b) => {
     const rank = (c: FindingClassification) =>
       c === "confirmed" ? 0 : c === "potential" ? 1 : 2;
     return rank(a.classification) - rank(b.classification);
   });
 
   const findingLimit = ADVANCED_FINDING_LIMIT;
-  const findings = deduped.slice(0, findingLimit);
-  const findingsOmitted = Math.max(0, deduped.length - findings.length);
+  const findings = grouped.slice(0, findingLimit);
+  const findingsOmitted = Math.max(0, grouped.length - findings.length);
 
   const candidateCount =
     evidence.overlaps.length +

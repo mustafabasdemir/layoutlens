@@ -16,6 +16,7 @@ import {
   type JsonReportVisualCompare,
   type RelatedElement,
   type ViewportAnalysis,
+  type AdvancedViewportAnalysis,
 } from "@layoutlens/shared";
 
 const EXCLUSION_REASONS = Object.keys(EXCLUSION_LABELS) as ExclusionReason[];
@@ -88,6 +89,37 @@ function parseRelated(raw: unknown, path: string): RelatedElement[] {
   }));
 }
 
+function parseOverlap(raw: unknown, path: string): JsonReportAdvancedFinding["overlap"] {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const out: NonNullable<JsonReportAdvancedFinding["overlap"]> = {
+    blockerSelector: str(raw.blockerSelector, `${path}.blockerSelector`),
+    blockerTagName: str(raw.blockerTagName, `${path}.blockerTagName`),
+    overlapAreaPx: num(raw.overlapAreaPx, `${path}.overlapAreaPx`),
+    coverageRatio: num(raw.coverageRatio, `${path}.coverageRatio`),
+    hitTestBlocked: raw.hitTestBlocked === true,
+    targetPointerEvents: str(raw.targetPointerEvents, `${path}.targetPointerEvents`),
+    blockerPointerEvents: str(raw.blockerPointerEvents, `${path}.blockerPointerEvents`),
+    blockerPosition: str(raw.blockerPosition, `${path}.blockerPosition`),
+    targetZIndex: str(raw.targetZIndex, `${path}.targetZIndex`),
+    blockerZIndex: str(raw.blockerZIndex, `${path}.blockerZIndex`),
+  };
+  if (raw.likelyConsentOverlay === true) out.likelyConsentOverlay = true;
+  return out;
+}
+
+function parseAdvancedRelated(raw: unknown, path: string): JsonReportAdvancedFinding["related"] {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((item, i) => {
+    const p = `${path}[${i}]`;
+    if (!isObject(item)) throw new ReportValidationError(`${p} must be an object.`);
+    return {
+      selector: str(item.selector, `${p}.selector`),
+      tagName: str(item.tagName, `${p}.tagName`),
+      boundingBox: parseBox(item.boundingBox, `${p}.boundingBox`),
+    };
+  });
+}
+
 function parseFinding(raw: unknown, path: string): JsonReportFinding {
   if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
   const severity = raw.severity;
@@ -149,6 +181,19 @@ function parseExcluded(raw: unknown, path: string): ExcludedFinding[] | undefine
     if (clipping) out.clipping = clipping;
     return out;
   });
+}
+
+function parseAdvancedAnalysis(raw: unknown, path: string): AdvancedViewportAnalysis | undefined {
+  if (!isObject(raw)) return undefined;
+  const n = (k: keyof AdvancedViewportAnalysis) => num(raw[k], `${path}.${String(k)}`);
+  return {
+    elementsInspected: n("elementsInspected"),
+    candidateCount: n("candidateCount"),
+    candidateLimit: n("candidateLimit"),
+    candidatesOmitted: n("candidatesOmitted"),
+    findingLimit: n("findingLimit"),
+    findingsOmitted: n("findingsOmitted"),
+  };
 }
 
 function parseAnalysis(raw: unknown, path: string): ViewportAnalysis | undefined {
@@ -224,10 +269,63 @@ function parseAdvancedFinding(raw: unknown, path: string): JsonReportAdvancedFin
   const sm = optionalNum(raw.selectorMatches);
   if (sm !== undefined) out.selectorMatches = sm;
   if (raw.visibleBox === null) out.visibleBox = null;
-  else {
-    const vb = parseBox(raw.visibleBox, `${path}.visibleBox`);
-    if (vb) out.visibleBox = vb;
+  else if (raw.visibleBox !== undefined) {
+    out.visibleBox = parseBox(raw.visibleBox, `${path}.visibleBox`);
   }
+  if (typeof raw.invisible === "boolean") out.invisible = raw.invisible;
+  const clipping = parseClipping(raw.clipping, `${path}.clipping`);
+  if (clipping) out.clipping = clipping;
+  if (raw.overlap !== undefined) out.overlap = parseOverlap(raw.overlap, `${path}.overlap`);
+  if (raw.textClip !== undefined && isObject(raw.textClip)) {
+    const t = raw.textClip;
+    out.textClip = {
+      scrollWidth: num(t.scrollWidth, `${path}.textClip.scrollWidth`),
+      clientWidth: num(t.clientWidth, `${path}.textClip.clientWidth`),
+      scrollHeight: num(t.scrollHeight, `${path}.textClip.scrollHeight`),
+      clientHeight: num(t.clientHeight, `${path}.textClip.clientHeight`),
+      overflowX: str(t.overflowX, `${path}.textClip.overflowX`),
+      overflowY: str(t.overflowY, `${path}.textClip.overflowY`),
+      whiteSpace: str(t.whiteSpace, `${path}.textClip.whiteSpace`),
+      textOverflow: str(t.textOverflow, `${path}.textClip.textOverflow`),
+      lineClamp: typeof t.lineClamp === "number" && Number.isFinite(t.lineClamp) ? t.lineClamp : null,
+      intentional: t.intentional === true,
+    };
+    const fs = optionalNum(t.fontSizePx);
+    if (fs !== undefined) out.textClip.fontSizePx = fs;
+    const lhp = optionalNum(t.lineHeightPx);
+    if (lhp !== undefined) out.textClip.lineHeightPx = lhp;
+  }
+  if (raw.offscreenControl !== undefined && isObject(raw.offscreenControl)) {
+    const o = raw.offscreenControl;
+    out.offscreenControl = {
+      role: typeof o.role === "string" ? o.role : null,
+      disabled: o.disabled === true,
+      tabIndex: typeof o.tabIndex === "number" && Number.isFinite(o.tabIndex) ? o.tabIndex : null,
+      horizontalOutside: o.horizontalOutside === true,
+      notVisibleInViewport: o.notVisibleInViewport === true,
+    };
+    if (typeof o.verticalIntersectsViewport === "boolean") out.offscreenControl.verticalIntersectsViewport = o.verticalIntersectsViewport;
+    if (typeof o.belowTheFold === "boolean") out.offscreenControl.belowTheFold = o.belowTheFold;
+    if (typeof o.intentionallyHidden === "boolean") out.offscreenControl.intentionallyHidden = o.intentionallyHidden;
+  }
+  if (raw.touchTarget !== undefined && isObject(raw.touchTarget)) {
+    const t = raw.touchTarget;
+    out.touchTarget = {
+      hitWidth: num(t.hitWidth, `${path}.touchTarget.hitWidth`),
+      hitHeight: num(t.hitHeight, `${path}.touchTarget.hitHeight`),
+      minSizePx: num(t.minSizePx, `${path}.touchTarget.minSizePx`),
+      spacingToNearestPx:
+        t.spacingToNearestPx === null ? null : num(t.spacingToNearestPx, `${path}.touchTarget.spacingToNearestPx`),
+      rule: str(t.rule, `${path}.touchTarget.rule`),
+      disabled: t.disabled === true,
+    };
+  }
+  const related = parseAdvancedRelated(raw.related, `${path}.related`);
+  if (related) out.related = related;
+  const rc = optionalNum(raw.relatedCount);
+  if (rc !== undefined) out.relatedCount = rc;
+  const gk = optionalStr(raw.groupKey);
+  if (gk !== undefined) out.groupKey = gk;
   return out;
 }
 
@@ -254,6 +352,8 @@ function parseViewport(raw: unknown, index: number): JsonReportViewport {
       parseAdvancedFinding(f, `${path}.advancedFindings[${i}]`),
     );
   }
+  const advA = parseAdvancedAnalysis(raw.advancedAnalysis, `${path}.advancedAnalysis`);
+  if (advA) vp.advancedAnalysis = advA;
   const analysis = parseAnalysis(raw.analysis, `${path}.analysis`);
   if (analysis) vp.analysis = analysis;
   const screenshot = optionalStr(raw.screenshot);

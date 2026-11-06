@@ -245,7 +245,8 @@ describe("Report workspace", () => {
     expect(await header.textContent()).toContain("fixture.layoutlens.test");
     const tabs = page.locator('[role="tab"][id^="ws-tab-"]');
     expect(await tabs.evaluateAll((els) => els.map((e) => e.getAttribute("data-width")))).toEqual(["390", "1024", "1440"]);
-    expect(await page.locator(".finding-card").count()).toBe(3);
+    expect(await page.locator(".finding-card-overflow").count()).toBe(3);
+    expect(await page.locator(".finding-card-advanced").count()).toBe(2);
     // Selector text containing markup must be shown as text, never parsed as HTML.
     expect(await page.locator(".finding-list script").count()).toBe(0);
     expect(await page.getByText(".code-sample <script>alert(1)</script>").first().count()).toBe(1);
@@ -274,7 +275,7 @@ describe("Report workspace", () => {
     const img = page.getByTestId("workspace-screenshot");
 
     // Clicking a card may scroll the page, so measure the image afterwards.
-    await page.locator('.finding-card[data-finding="390:1"]').click();
+    await page.locator('.finding-card-overflow[data-finding="390:1"]').click();
     const imgBox = (await img.boundingBox())!;
     const box = (await page.locator('.shot-box[data-finding="390:1"]').boundingBox())!;
     const scale = imgBox.width / 390;
@@ -289,7 +290,7 @@ describe("Report workspace", () => {
     expect(clippedBox.x + clippedBox.width).toBeLessThanOrEqual(imgBox.x + imgBox.width + 1);
 
     expect(await page.locator('.shot-box[data-finding="390:2"]').count()).toBe(0);
-    await page.locator('.finding-card[data-finding="390:2"]').click();
+    await page.locator('.finding-card-overflow[data-finding="390:2"]').click();
     const detail = page.locator(".detail");
     expect(await detail.getByText("Not shown on screenshot").count()).toBe(1);
     expect(await detail.textContent()).toContain("outside the captured screenshot area");
@@ -301,26 +302,60 @@ describe("Report workspace", () => {
     const { context, page } = await openPage();
     await loadFixture(page);
     await page.getByRole("button", { name: "High 1" }).click();
-    expect(await page.locator(".finding-card").count()).toBe(1);
-    expect(await page.locator('.finding-card[data-finding="390:0"]').getAttribute("aria-pressed")).toBe("true");
+    expect(await page.locator(".finding-card-overflow").count()).toBe(1);
+    expect(await page.locator('.finding-card-overflow[data-finding="390:0"]').getAttribute("aria-pressed")).toBe("true");
     await page.getByRole("button", { name: "All 3" }).click();
     await page.getByLabel("Filter by issue type").selectOption("internal-overflow");
-    expect(await page.locator(".finding-card").count()).toBe(1);
-    expect(await page.locator(".finding-card").getAttribute("data-finding")).toBe("390:1");
-    expect(await page.locator(".shot-box").count()).toBe(1);
+    expect(await page.locator(".finding-card-overflow").count()).toBe(1);
+    expect(await page.locator(".finding-card-overflow").getAttribute("data-finding")).toBe("390:1");
+    await page.getByRole("checkbox", { name: "All outlines" }).uncheck();
+    expect(await page.locator(".shot-box-overflow").count()).toBe(1);
     await page.getByLabel("Filter by issue type").selectOption("all");
-    expect(await page.locator(".finding-card").count()).toBe(3);
+    expect(await page.locator(".finding-card-overflow").count()).toBe(3);
+    await context.close();
+  });
+
+  it("shows explanatory detail for advanced findings with no screenshot overlay", async () => {
+    const { context, page } = await openPage();
+    await loadFixture(page);
+    await page.locator('.finding-card-advanced[data-finding="a:390:0"]').click();
+    expect(await page.locator('.shot-box[data-finding="a:390:0"]').count()).toBe(0);
+    const detail = page.locator(".detail");
+    expect(await detail.getByText("Not shown on screenshot").count()).toBe(1);
+    expect(await page.getByTestId("screenshot-evidence").textContent()).toMatch(/viewport|painted/i);
+    await context.close();
+  });
+
+  it("maps responsive finding coordinates to the screenshot under zoom", async () => {
+    const { context, page } = await openPage();
+    await loadFixture(page);
+    const img = page.getByTestId("workspace-screenshot");
+    await page.locator('.finding-card-advanced[data-finding="a:390:1"]').click();
+    const imgBox = (await img.boundingBox())!;
+    const box = (await page.locator('.shot-box[data-finding="a:390:1"]').boundingBox())!;
+    const scale = imgBox.width / 390;
+    expect(Math.abs(box.x - imgBox.x - 50 * scale)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.y - imgBox.y - 100 * scale)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.width - 40 * scale)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.height - 40 * scale)).toBeLessThanOrEqual(2);
+    await page.locator(".viewer-card").getByRole("button", { name: "Zoom in" }).click();
+    await page.locator(".viewer-card").getByRole("button", { name: "Zoom in" }).click();
+    const imgBox2 = (await img.boundingBox())!;
+    const box2 = (await page.locator('.shot-box[data-finding="a:390:1"]').boundingBox())!;
+    const scale2 = imgBox2.width / 390;
+    expect(Math.abs(box2.x - imgBox2.x - 50 * scale2)).toBeLessThanOrEqual(3);
+    expect(Math.abs(box2.y - imgBox2.y - 100 * scale2)).toBeLessThanOrEqual(3);
     await context.close();
   });
 
   it("supports keyboard navigation through findings", async () => {
     const { context, page } = await openPage();
     await loadFixture(page);
-    await page.locator('.finding-card[data-finding="390:0"]').focus();
+    await page.locator('.finding-card-overflow[data-finding="390:0"]').focus();
     await page.keyboard.press("ArrowDown");
     expect(await page.evaluate(() => document.activeElement?.getAttribute("data-finding"))).toBe("390:1");
     await page.keyboard.press("Enter");
-    expect(await page.locator('.finding-card[data-finding="390:1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(await page.locator('.finding-card-overflow[data-finding="390:1"]').getAttribute("aria-pressed")).toBe("true");
     expect(await page.locator('.shot-box.is-selected').getAttribute("data-finding")).toBe("390:1");
     await page.keyboard.press("ArrowUp");
     expect(await page.evaluate(() => document.activeElement?.getAttribute("data-finding"))).toBe("390:0");

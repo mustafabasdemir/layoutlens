@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offscreen — inert panel (negative)</title>
+  <style>
+    body { margin: 0; overflow-x: hidden; }
+    [inert] {
+      position: fixed; left: -260px; top: 40px; width: 240px;
+      background: #222; padding: 12px;
+    }
+    [inert] a { color: #fff; display: block; padding: 8px; }
+  </style>
+</head>
+<body>
+  <p>Main content</p>
+  <div inert>
+    <a href="#a">Inert link</a>
+    <a href="#b">Another</a>
+  </div>
+</body>
+</html>

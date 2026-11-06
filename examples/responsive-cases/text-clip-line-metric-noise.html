@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Text clip — line metric noise (negative)</title>
+  <style>
+    body { margin: 16px; font-family: system-ui, sans-serif; }
+    /* Wrapped paragraph: sub-pixel scrollHeight vs clientHeight should not be reported as clipping. */
+    #wrap {
+      max-width: 280px;
+      line-height: 1.37;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <p id="wrap">
+    Normal wrapped body copy with no intentional truncation. The box grows with content
+    and overflow remains visible.
+  </p>
+</body>
+</html>

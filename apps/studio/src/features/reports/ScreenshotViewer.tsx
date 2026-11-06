@@ -1,31 +1,19 @@
 import { useEffect, useMemo, useRef } from "react";
 import { ImageOff } from "lucide-react";
-import { mapBoxToScreenshot, overlayBoxFor, type JsonReportViewport, type OverlayMapping } from "@layoutlens/shared";
-import { findingKey, type FindingRef } from "../../lib/findings";
+import type { JsonReportViewport } from "@layoutlens/shared";
+import { workspaceKey, type WorkspaceFindingRef } from "../../lib/workspace-findings";
 import type { ImageState } from "../../ui/hooks";
 import { EmptyState, Notice, Skeleton } from "../../ui/primitives";
 import { ZoomFrame } from "../../ui/ZoomFrame";
+import { overlayForWorkspace } from "./workspace-overlay";
 
-export function overlayFor(
-  ref: FindingRef,
-  viewport: JsonReportViewport,
-  natural: { naturalWidth: number; naturalHeight: number },
-): OverlayMapping {
-  const box = overlayBoxFor(ref.finding);
-  if (!box) {
-    return {
-      status: "outside",
-      reason: `No part of this element is painted inside the ${viewport.width}px viewport, so the screenshot cannot show it.`,
-    };
-  }
-  return mapBoxToScreenshot(box, viewport, natural);
-}
+export { overlayForWorkspace };
 
 export function ScreenshotViewer({
   src,
   image,
   viewport,
-  findings,
+  workspaceRefs,
   selectedKey,
   onSelect,
   zoom,
@@ -34,7 +22,7 @@ export function ScreenshotViewer({
   src: string | null;
   image: ImageState;
   viewport: JsonReportViewport;
-  findings: readonly FindingRef[];
+  workspaceRefs: readonly WorkspaceFindingRef[];
   selectedKey: string | null;
   onSelect(key: string): void;
   zoom: number;
@@ -44,8 +32,12 @@ export function ScreenshotViewer({
 
   const overlays = useMemo(() => {
     if (image.status !== "loaded") return [];
-    return findings.map((ref) => ({ ref, key: findingKey(ref), mapping: overlayFor(ref, viewport, image) }));
-  }, [findings, viewport, image]);
+    return workspaceRefs.map((ref) => ({
+      ref,
+      key: workspaceKey(ref),
+      mapping: overlayForWorkspace(ref, viewport, image),
+    }));
+  }, [workspaceRefs, viewport, image]);
 
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -96,23 +88,26 @@ export function ScreenshotViewer({
           if (mapping.status !== "visible" && mapping.status !== "clipped") return null;
           const selected = key === selectedKey;
           if (!selected && !showAll) return null;
+          const sev = ref.kind === "overflow" ? ref.finding.severity : ref.finding.severity;
           const { leftPct, topPct, widthPct, heightPct } = mapping.rect;
+          const label =
+            ref.kind === "overflow" ? ref.finding.selector : `${ref.finding.category}: ${ref.finding.selector}`;
           return (
             <button
               key={key}
               ref={selected ? selectedRef : undefined}
               type="button"
-              className={`shot-box sev-${ref.finding.severity}${selected ? " is-selected" : ""}${mapping.status === "clipped" ? " is-clipped" : ""}`}
+              className={`shot-box shot-box-${ref.kind} sev-${sev}${selected ? " is-selected" : ""}${mapping.status === "clipped" ? " is-clipped" : ""}`}
               style={{ left: `${leftPct}%`, top: `${topPct}%`, width: `${widthPct}%`, height: `${heightPct}%` }}
               data-finding={key}
-              aria-label={`Select finding ${ref.finding.selector}`}
+              aria-label={`Select finding ${label}`}
               tabIndex={-1}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect(key);
               }}
             >
-              {selected ? <span className="shot-box-label">{ref.finding.selector}</span> : null}
+              {selected ? <span className="shot-box-label">{label}</span> : null}
             </button>
           );
         })}

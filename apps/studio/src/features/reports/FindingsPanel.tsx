@@ -12,6 +12,7 @@ import {
   type JsonReportViewport,
 } from "@layoutlens/shared";
 import { evidenceOf, findingKey, type EvidenceFilter, type FindingFilters, type FindingRef } from "../../lib/findings";
+import { workspaceKey, type AdvancedFindingRef } from "../../lib/workspace-findings";
 import { Badge, ClassificationBadge, EmptyState, Notice, SegmentedControl, SeverityBadge } from "../../ui/primitives";
 
 const EVIDENCE_OPTIONS: { id: EvidenceFilter; label: string }[] = [
@@ -51,6 +52,22 @@ export function ViewportNotices({ viewport }: { viewport: JsonReportViewport }) 
       title: "Unattributed overflow",
       text: `${a.unattributedOverflowPx}px of document overflow could not be traced to any measured element.`,
     });
+  }
+  const adv = viewport.advancedAnalysis;
+  if (adv) {
+    const det = [
+      adv.findingsOmitted > 0 ? `${adv.findingsOmitted} responsive finding(s) omitted (reporting cap ${adv.findingLimit}/viewport)` : null,
+      adv.candidatesOmitted > 0
+        ? `${adv.candidatesOmitted} element(s) not evaluated (scan cap ${adv.candidateLimit})`
+        : null,
+    ].filter(Boolean);
+    if (det.length > 0) {
+      notes.push({
+        key: "responsive-limits",
+        title: "Responsive analysis limits",
+        text: `Evaluated up to ${adv.candidateCount} detector candidate(s); reported ${viewport.advancedFindings?.length ?? 0} responsive finding(s). ${det.join(" ")}`,
+      });
+    }
   }
   if (notes.length === 0) return null;
   return (
@@ -95,38 +112,58 @@ export function ExcludedList({ viewport }: { viewport: JsonReportViewport }) {
   );
 }
 
-export function AdvancedFindingsList({ viewport }: { viewport: JsonReportViewport }) {
-  const items = viewport.advancedFindings ?? [];
-  if (items.length === 0) return null;
+function AdvancedFindingRows({
+  advancedRefs,
+  selectedKey,
+  onSelect,
+}: {
+  advancedRefs: readonly AdvancedFindingRef[];
+  selectedKey: string | null;
+  onSelect(key: string): void;
+}) {
+  if (advancedRefs.length === 0) return null;
   return (
-    <details className="excluded-list advanced-list" data-testid="advanced-findings-list" open>
-      <summary>
-        Responsive analysis <span className="count-pill">{items.length}</span>
-        <span className="excluded-sub">Overlap, text clipping, offscreen controls, touch targets — advisory; exit code unchanged</span>
-      </summary>
-      <ul className="finding-list">
-        {items.map((f) => (
-          <li key={f.id} className="advanced-item" data-advanced-category={f.category}>
-            <span className="finding-top">
-              <Badge>{ADVANCED_CATEGORY_LABELS[f.category]}</Badge>
-              {f.classification ? <ClassificationBadge classification={f.classification} /> : null}
-              <SeverityBadge severity={f.severity} />
-            </span>
-            <code className="finding-selector" title={f.selector}>{f.selector}</code>
-            <span className="finding-text">{explainAdvancedFinding(f)}</span>
-            {f.overlap ? (
-              <span className="finding-meta">Blocked by {f.overlap.blockerSelector}</span>
-            ) : null}
+    <>
+      <li className="findings-section-label" aria-hidden="true">
+        <h3 className="panel-subtitle">Responsive analysis <span className="count-pill">{advancedRefs.length}</span></h3>
+        <p className="field-hint">Advisory — does not change the overflow exit code.</p>
+      </li>
+      {advancedRefs.map((ref) => {
+        const key = workspaceKey(ref);
+        const f = ref.finding;
+        const selected = key === selectedKey;
+        return (
+          <li key={key}>
+            <button
+              type="button"
+              className="finding-card-advanced"
+              aria-pressed={selected}
+              data-finding={key}
+              data-advanced-category={f.category}
+              onClick={() => onSelect(key)}
+            >
+              <span className="finding-top">
+                <Badge>{ADVANCED_CATEGORY_LABELS[f.category]}</Badge>
+                {f.classification ? <ClassificationBadge classification={f.classification} /> : null}
+                <SeverityBadge severity={f.severity} />
+              </span>
+              <code className="finding-selector" title={f.selector}>{f.selector}</code>
+              <span className="finding-text">{explainAdvancedFinding(f)}</span>
+              {f.overlap ? (
+                <span className="finding-meta">Blocked by {f.overlap.blockerSelector}</span>
+              ) : null}
+            </button>
           </li>
-        ))}
-      </ul>
-    </details>
+        );
+      })}
+    </>
   );
 }
 
 export function FindingsPanel({
   all,
   visible,
+  advancedRefs,
   filters,
   onFilters,
   selectedKey,
@@ -135,6 +172,7 @@ export function FindingsPanel({
 }: {
   all: readonly FindingRef[];
   visible: readonly FindingRef[];
+  advancedRefs: readonly AdvancedFindingRef[];
   filters: FindingFilters;
   onFilters(f: FindingFilters): void;
   selectedKey: string | null;
@@ -148,11 +186,14 @@ export function FindingsPanel({
   const kindsPresent = (Object.keys(FINDING_KIND_LABELS) as FindingKind[]).filter((k) =>
     all.some((r) => findingKinds(r.finding).includes(k)),
   );
+  const hasAnyAdvanced = advancedRefs.length > 0;
 
   function onListKey(e: KeyboardEvent<HTMLUListElement>) {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault();
-    const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button.finding-card")];
+    const buttons = [
+      ...e.currentTarget.querySelectorAll<HTMLButtonElement>("button.finding-card-overflow, button.finding-card-advanced"),
+    ];
     const idx = buttons.findIndex((b) => b === document.activeElement);
     const next = buttons[Math.min(buttons.length - 1, Math.max(0, idx + (e.key === "ArrowDown" ? 1 : -1)))];
     next?.focus();
@@ -162,7 +203,7 @@ export function FindingsPanel({
     <section className="findings" aria-labelledby="findings-heading">
       <div className="findings-head">
         <h2 id="findings-heading" className="panel-title">
-          Findings <span className="count-pill">{visible.length}{visible.length !== all.length ? ` / ${all.length}` : ""}</span>
+          Layout overflow <span className="count-pill">{visible.length}{visible.length !== all.length ? ` / ${all.length}` : ""}</span>
         </h2>
       </div>
       <ViewportNotices viewport={viewport} />
@@ -212,17 +253,25 @@ export function FindingsPanel({
         </div>
       ) : null}
 
-      {all.length === 0 ? (
+      {all.length === 0 && !hasAnyAdvanced ? (
         <EmptyState icon={<CheckCircle2 size={20} />} title="No overflow findings">
           <p>
             No element pushed content past the {viewportWidth}px viewport in this scan
             {(viewport.excluded?.length ?? 0) > 0 ? " — elements past the edge were all clipped, scrollable, offscreen, or hidden (see below)." : "."}
           </p>
         </EmptyState>
-      ) : visible.length === 0 ? (
+      ) : visible.length === 0 && all.length > 0 && advancedRefs.length === 0 ? (
         <EmptyState icon={<SearchX size={20} />} title="No findings match these filters" />
-      ) : (
-        <ul className="finding-list" onKeyDown={onListKey} aria-label="Findings">
+      ) : null}
+      {(visible.length > 0 || advancedRefs.length > 0) &&
+      !(all.length === 0 && !hasAnyAdvanced) &&
+      !(visible.length === 0 && all.length > 0 && advancedRefs.length === 0) ? (
+        <ul
+          className="finding-list"
+          onKeyDown={onListKey}
+          aria-label="Layout and responsive findings"
+          data-testid="advanced-findings-list"
+        >
           {visible.map((ref) => {
             const key = findingKey(ref);
             const selected = key === selectedKey;
@@ -232,7 +281,7 @@ export function FindingsPanel({
               <li key={key}>
                 <button
                   type="button"
-                  className="finding-card"
+                  className="finding-card-overflow"
                   aria-pressed={selected}
                   data-finding={key}
                   data-classification={f.classification ?? "unclassified"}
@@ -255,9 +304,9 @@ export function FindingsPanel({
               </li>
             );
           })}
+          <AdvancedFindingRows advancedRefs={advancedRefs} selectedKey={selectedKey} onSelect={onSelect} />
         </ul>
-      )}
-      <AdvancedFindingsList viewport={viewport} />
+      ) : null}
       <ExcludedList viewport={viewport} />
     </section>
   );

@@ -39,6 +39,20 @@ describe("Phase 8 responsive fixtures (Chromium)", () => {
     expect(r.findings.filter((f) => f.category === "overlap")).toEqual([]);
   });
 
+  it("overlap: CMP/cookie strip blocks hits but stays potential (not confirmed defect)", async () => {
+    const r = await responsive("overlap-cookie-bar-covers-links.html");
+    const hits = r.findings.filter((f) => f.category === "overlap");
+    expect(hits.length).toBeGreaterThanOrEqual(1);
+    const cookie = hits.find((f) => f.selector.includes("target") && f.overlap?.likelyConsentOverlay);
+    expect(cookie).toBeDefined();
+    expect(cookie?.classification).toBe("potential");
+  });
+
+  it("overlap: does not treat static main as a stacking blocker for fixed floaters", async () => {
+    const r = await responsive("overlap-main-not-blocker.html");
+    expect(r.findings.filter((f) => f.category === "overlap")).toEqual([]);
+  });
+
   it("text clipping: flags unintentionally clipped text", async () => {
     const r = await responsive("text-clip-unintentional.html");
     expect(r.findings.some((f) => f.category === "text-clipping" && f.selector.includes("bad"))).toBe(true);
@@ -46,6 +60,11 @@ describe("Phase 8 responsive fixtures (Chromium)", () => {
 
   it("text clipping: skips a short intentional ellipsis", async () => {
     const r = await responsive("text-clip-ellipsis.html");
+    expect(r.findings.filter((f) => f.category === "text-clipping")).toEqual([]);
+  });
+
+  it("text clipping: ignores line-box scroll metric noise on wrapped copy", async () => {
+    const r = await responsive("text-clip-line-metric-noise.html");
     expect(r.findings.filter((f) => f.category === "text-clipping")).toEqual([]);
   });
 
@@ -59,6 +78,21 @@ describe("Phase 8 responsive fixtures (Chromium)", () => {
     expect(r.findings.filter((f) => f.category === "offscreen-control")).toEqual([]);
   });
 
+  it("offscreen control: skips controls that exist only below the first viewport height", async () => {
+    const r = await responsive("offscreen-below-the-fold.html");
+    expect(r.findings.filter((f) => f.category === "offscreen-control")).toEqual([]);
+  });
+
+  it("offscreen control: skips inert / hidden subtree", async () => {
+    const r = await responsive("offscreen-inert-panel.html");
+    expect(r.findings.filter((f) => f.category === "offscreen-control")).toEqual([]);
+  });
+
+  it("offscreen control: no flag when horizontal scroll can reach the control", async () => {
+    const r = await responsive("offscreen-horizontal-scroll-ok.html");
+    expect(r.findings.filter((f) => f.category === "offscreen-control")).toEqual([]);
+  });
+
   it("touch target: flags an undersized control at 390px", async () => {
     const r = await responsive("touch-small-button.html", 390);
     expect(r.findings.some((f) => f.category === "touch-target" && f.selector.includes("tiny"))).toBe(true);
@@ -67,6 +101,13 @@ describe("Phase 8 responsive fixtures (Chromium)", () => {
   it("touch target: does not flag an adequately sized button", async () => {
     const r = await responsive("touch-adequate.html", 390);
     expect(r.findings.filter((f) => f.category === "touch-target")).toEqual([]);
+  });
+
+  it("touch target: groups many similar small controls in one finding", async () => {
+    const r = await responsive("touch-group-similar.html", 390);
+    const touch = r.findings.filter((f) => f.category === "touch-target");
+    expect(touch.length).toBeLessThanOrEqual(2);
+    expect(touch.some((f) => (f.relatedCount ?? 0) >= 5)).toBe(true);
   });
 
   it("regression: clipped carousel still produces no advanced spam", async () => {

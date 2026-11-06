@@ -41,6 +41,8 @@ export interface OverlapEvidence {
   blockerPosition: string;
   targetZIndex: string;
   blockerZIndex: string;
+  /** Fixed CMP / cookie layer — overlap is real but often intentional UX. */
+  likelyConsentOverlay?: boolean;
 }
 
 export interface TextClipEvidence {
@@ -55,6 +57,9 @@ export interface TextClipEvidence {
   lineClamp: number | null;
   /** True when ellipsis / line-clamp styling looks intentional. */
   intentional: boolean;
+  /** Computed font metrics (Phase 8.2). */
+  fontSizePx?: number;
+  lineHeightPx?: number;
 }
 
 export interface OffscreenControlEvidence {
@@ -64,6 +69,12 @@ export interface OffscreenControlEvidence {
   horizontalOutside: boolean;
   /** No painted intersection with the layout viewport. */
   notVisibleInViewport: boolean;
+  /** Intersects viewport vertically (Y range). */
+  verticalIntersectsViewport?: boolean;
+  /** Control is entirely below the first viewport height (scroll to reach). */
+  belowTheFold?: boolean;
+  /** Author-hiding: inert, hidden, closed details content, hidden popover, content-visibility. */
+  intentionallyHidden?: boolean;
 }
 
 export interface TouchTargetEvidence {
@@ -73,6 +84,13 @@ export interface TouchTargetEvidence {
   spacingToNearestPx: number | null;
   rule: string;
   disabled: boolean;
+}
+
+/** Sample element merged into a grouped responsive finding (Phase 8.1). */
+export interface AdvancedRelatedSample {
+  selector: string;
+  tagName: string;
+  boundingBox: ElementBoundingBox;
 }
 
 export interface AdvancedFinding {
@@ -94,6 +112,11 @@ export interface AdvancedFinding {
   textClip?: TextClipEvidence;
   offscreenControl?: OffscreenControlEvidence;
   touchTarget?: TouchTargetEvidence;
+  /** Grouped offscreen controls sharing the same hidden container (samples). */
+  related?: AdvancedRelatedSample[];
+  relatedCount?: number;
+  /** Evidence key for merged findings (optional, for transparency). */
+  groupKey?: string;
 }
 
 export interface AdvancedViewportAnalysis {

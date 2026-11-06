@@ -258,6 +258,7 @@ export {
   type AdvancedCategoryCounts,
   type AdvancedFinding,
   type AdvancedFindingCategory,
+  type AdvancedRelatedSample,
   type AdvancedViewportAnalysis,
   type DetectionConfig,
   type OffscreenControlEvidence,
@@ -267,6 +268,7 @@ export {
 } from "./responsive.js";
 export {
   advancedCategoryLabel,
+  advancedScreenshotEvidenceNote,
   diagnosticHintsAdvanced,
   explainAdvancedFinding,
   overlayBoxForAdvanced,

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Overlap — cookie bar blocks button (CMP-like)</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; min-height: 120vh; }
+    #target { position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%); z-index: 1; padding: 12px 20px; }
+    #cookie-consent-banner {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 110px;
+      background: rgba(20, 20, 20, 0.96); color: #fff; z-index: 999999;
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main><p>Scrollable page.</p></main>
+  <button type="button" id="target">Read more</button>
+  <div id="cookie-consent-banner" class="gdpr-cookie-consent" role="dialog" aria-label="Cookie consent">
+    <span>We use cookies.</span>
+    <button type="button">Accept</button>
+  </div>
+</body>
+</html>

@@ -92,6 +92,11 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
                 boundingBox: { ...f.boundingBox },
                 visibleBox: f.visibleBox ? { ...f.visibleBox } : null,
                 ...(f.clipping ? { clipping: { ...f.clipping, boundingBox: { ...f.clipping.boundingBox } } } : {}),
+                ...(f.related?.length
+                  ? {
+                      related: f.related.map((r) => ({ ...r, boundingBox: { ...r.boundingBox } })),
+                    }
+                  : {}),
               })),
             }
           : v.advancedFindings
