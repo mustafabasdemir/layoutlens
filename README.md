@@ -1,214 +1,252 @@
 # LayoutLens
 
-Free, open-source, **local-first** tooling for detecting responsive layout issues in websites.
+**Catch broken layouts before your users do.**
 
-## Features
+LayoutLens is a **local-first** developer tool that uses **Chromium (Playwright)** to scan web pages at standard responsive widths, detect **horizontal overflow** with **evidence-based classification**, optional **advanced responsive advisories**, **per-viewport screenshots**, and optional **visual regression** against saved baselines. Reports work offline; there is **no cloud account, API keys, or telemetry**.
 
-- Scan a URL with **Chromium** (Playwright)
-- **390px**, **768px**, and **1440px** viewport widths
-- **Document-level** horizontal overflow detection
-- **Element-level** root-cause findings with CSS selectors and bounding boxes
-- **Severity** levels: `high`, `medium`, `low`
-- **Terminal**, **JSON**, or **offline HTML** reports (no cloud dashboard)
+**Documentation:** [English](README.md) · [Türkçe](docs/README.tr.md)
 
-**Phase 3** — Visual HTML report with per-viewport screenshots, bounding-box overlays, and interactive filters.
+---
 
-**Phase 4** — Local **visual regression testing** (pixelmatch baselines, diff images, before/after slider in HTML reports).
+![LayoutLens Studio — scan summary and findings (weather.gov, mobile viewport)](docs/readme-weather-gov-studio.png)
 
-**Phase 5–6** — **LayoutLens Studio**: a local React UI to run scans, browse stored reports, and explore findings with zoom/pan overlays and visual comparison modes. A loopback-only **scan API** (`@layoutlens/server`) connects Studio to the real Playwright scanner.
+*Public website scan used as a UI example; third-party sites and results may change.*
 
-**Phase 7** — **Evidence-based classification** (`confirmed`, `potential`, `insufficient-evidence`), **excluded** overflow candidates (carousels, scroll containers, offscreen/hidden content) with reasons, **visible-only overlays** for partly clipped elements, and matching fields in JSON/HTML reports and Studio.
+---
 
-**Phase 8** — **Advanced responsive analysis** (overlap, text clipping, offscreen controls, touch targets) as separate **advisory** findings in JSON/CLI/Studio; horizontal overflow **exit codes unchanged**. Configure via `ScanOptions.detection` / future CLI flags.
+## Key features
 
-## Requirements
+- **Chromium-based inspection** — Real headless browser measurement, not static HTML guessing.
+- **Evidence-based overflow detection** — Classifications such as confirmed vs potential, excluded groups (e.g. carousels) with reasons, and **visible-only overlays** when content is partly clipped.
+- **Responsive layout advisories** — Separate **advanced** findings (overlap, text clipping, offscreen controls, touch targets) in JSON and Studio; **horizontal overflow exit semantics** remain primary.
+- **Interactive DOM Inspector (Studio)** — After a scan, pick elements on the screenshot and inspect selector paths and related context (when inspector snapshots are present).
+- **Offline HTML reports** — Self-contained bundles with screenshots, filters, and **inspector** UI where data is included (see screenshot tools in generated `index.html`).
+- **Visual regression** — Optional **pixelmatch** comparison vs a baseline directory (`layoutlens baseline create|update`).
+- **HTTP and navigation awareness** — Summary reflects response status, redirects, and trust hints; does not treat error pages as a “clean” layout proof.
+- **Navigation reliability (Phase 9.x)** — Separate timeouts for navigation, load readiness, and screenshots; bounded recovery when the document is usable but load never settles; **per-viewport** success/failure/skipped status.
+- **Privacy** — Runs on your machine; scan output stays under your chosen data directory.
 
-- Node.js 20+
-- [pnpm](https://pnpm.io/) 9+
+---
 
-## Setup
+![LayoutLens Studio — pointer-based element selection in Inspector mode (weather.gov)](docs/readme-weather-gov-inspector.png)
+
+*Inspector: select elements on the captured viewport and inspect DOM/selector context.*
+
+---
+
+## Quick Start
+
+**Requirements:** Node.js **20+**, [pnpm](https://pnpm.io/) **9+** (see root `package.json`).
 
 ```bash
+git clone https://github.com/mustafabasdemir/layoutlens.git
+cd layoutlens
 pnpm install
 pnpm browser:install
 pnpm build
 ```
 
-## Usage (CLI)
+Installs Playwright’s Chromium binary (`pnpm browser:install`).
+
+Scan a URL (CLI wraps `packages/cli/dist/index.js`):
 
 ```bash
 pnpm cli scan https://example.com
 ```
 
-Scan the included broken example (use a `file://` URL with the absolute path to `examples/broken-layout/index.html`):
+Scan the bundled **broken layout** demo with an absolute `file://` URL (adjust the path for your OS):
+
+From the repository root, use an absolute `file://` URL (paths must point at your clone):
 
 ```bash
-# macOS / Linux
-pnpm cli scan "file://$(pwd)/examples/broken-layout/index.html"
-
-# Windows PowerShell (replace with your clone path)
-pnpm cli scan "file:///D:/path/to/layoutlens/examples/broken-layout/index.html"
+# macOS / Linux (bash)
+pnpm cli scan "file://${PWD}/examples/broken-layout/index.html"
 ```
 
-### Options
+```powershell
+# Windows PowerShell — replace D:\dev\layoutlens if your clone lives elsewhere
+pnpm cli scan "file:///D:/dev/layoutlens/examples/broken-layout/index.html"
+```
+
+---
+
+## CLI usage
+
+Entrypoint: `layoutlens` (see `packages/cli/src/index.ts`, version **0.4.0**).
+
+**Commands**
+
+| Command | Purpose |
+|---------|---------|
+| `scan <url>` | Scan a single page (`http`, `https`, or `file:`) |
+| `baseline create <url>` | Create a visual baseline (requires `--baseline-dir`) |
+| `baseline update <url>` | Update baseline when URL matches manifest |
+
+**`scan` options (representative)**
 
 | Option | Description |
 |--------|-------------|
-| `--no-headless` | Show the browser while scanning |
-| `-H, --height <pixels>` | Viewport height (default `844`) |
-| `-f, --format text\|json\|html` | Output format (default `text`) |
-| `-o, --output <path>` | File (text/json) or directory (html) |
+| `--no-headless` | Show the browser window |
+| `-H, --height <px>` | Viewport height (default **844**) |
+| `-f, --format <format>` | Output: `text` (default), `json`, or `html` |
+| `-o, --output <path>` | File for `text`/`json`, **directory** for `html` |
+| `-b, --baseline-dir <path>` | Compare screenshots to a baseline |
+| `-c, --visual-config <path>` | JSON for thresholds, masks, stability |
+| `--nav-timeout-ms` | `page.goto` timeout (`waitUntil: domcontentloaded`) |
+| `--readiness-timeout-ms` | Wait for `load` after DOMContentLoaded |
+| `--screenshot-timeout-ms` | Per-viewport screenshot timeout |
+| `--post-load-settle-ms` | Bounded delay after readiness before measurement |
 
-### JSON report
-
-```bash
-pnpm cli scan "file:///…/examples/broken-layout/index.html" --format json --output report.json
-```
-
-JSON uses `schemaVersion: "1.0"` and includes:
-
-- `summary` — viewport issue count, total findings, counts by severity and classification, excluded count, truncation flags
-- `viewports[]` — per-width document metrics, `findings[]` (with `classification`, `visibleBox`, `reason`), and `excluded[]` groups
-
-Print JSON to stdout:
+HTML report requires `-o`:
 
 ```bash
-pnpm cli scan https://example.com --format json
+# macOS / Linux — ${PWD} is the repo root in your shell
+pnpm cli scan "file://${PWD}/examples/broken-layout/index.html" --format html --output ./layoutlens-report
 ```
 
-### HTML report (offline)
-
-Generates a folder with `index.html`, `report.json`, and `screenshots/`:
-
-```bash
-pnpm cli scan "file:///…/examples/broken-layout/index.html" --format html --output ./layoutlens-report
+```powershell
+# Windows PowerShell
+pnpm cli scan "file:///D:/dev/layoutlens/examples/broken-layout/index.html" --format html --output ./layoutlens-report
 ```
 
-Open `layoutlens-report/index.html` in a browser — no network required. The report includes viewport/severity filters, screenshot previews, highlighted finding boxes, classification labels, and excluded-content summaries. Untrusted scan data is escaped / rendered via `textContent` and safe JSON embedding.
+Open `layoutlens-report/index.html` in a browser — no CDN required for the bundle.
 
-### Visual regression (Phase 4)
+---
 
-Create an explicit baseline (manifest + PNG checksums):
+## LayoutLens Studio
 
-```bash
-pnpm cli baseline create "file:///…/examples/broken-layout/index.html" --baseline-dir ./baselines/example
-```
+Local React + Vite UI (`apps/studio`), wired to a **loopback-only** scan API (`@layoutlens/server`).
 
-Compare during scan (exit `1` if pixels differ beyond thresholds):
-
-```bash
-pnpm cli scan "file:///…/examples/broken-layout/index.html" \
-  --baseline-dir ./baselines/example \
-  --format html --output ./layoutlens-report
-```
-
-Safely refresh baselines when the URL matches `manifest.json` (`urlKey`):
-
-```bash
-pnpm cli baseline update "file:///…/examples/broken-layout/index.html" --baseline-dir ./baselines/example
-```
-
-Optional `examples/visual.config.json` documents thresholds, **masks** (ignore regions), and **stability** settings (disable animations, post-load wait).
-
-Baseline layout:
-
-```
-baselines/example/
-  manifest.json
-  visual.config.json   # optional, copied on create
-  screenshots/
-    viewport-390.png
-    viewport-768.png
-    viewport-1440.png
-```
-
-HTML reports with `--baseline-dir` add baseline/after **slider**, **diff** PNGs under `visual/`, and comparison stats.
-
-### Exit codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | No layout overflow and no visual regression failures |
-| `1` | Layout findings and/or visual regression failures |
-| `2` | Scan error (invalid args, navigation failure, etc.) |
-
-## LayoutLens Studio (local UI)
-
-Studio runs on **127.0.0.1** only. The Vite dev server embeds the scan API on the same origin (no separate CORS setup).
+**Development (from repo root):**
 
 ```bash
 pnpm studio
 ```
 
-Then open the URL Vite prints (default `http://127.0.0.1:5173/`). Use **Scan Website** to run a real local scan; results and screenshots are stored under `.layoutlens/` (gitignored).
+Use the URL Vite prints (often `http://127.0.0.1:5173/`).
 
-Optional environment variables:
-
-| Variable | Purpose |
-|----------|---------|
-| `LAYOUTLENS_DATA_DIR` | Override the scan storage directory (default: repo `.layoutlens/`) |
-
-Production-style preview (built assets + scan API):
-
-```bash
-pnpm studio:preview
-```
-
-Or build Studio and serve it with the standalone server:
+**Production-style: build Studio and serve static assets + API**
 
 ```bash
 pnpm studio:serve
 ```
 
-The `@layoutlens/server` package can also be started directly after `pnpm build`:
+**Environment / storage**
 
-```bash
-pnpm server -- --data-dir .layoutlens
-```
+| Variable / command | Role |
+|--------------------|------|
+| `LAYOUTLENS_DATA_DIR` | Override where scan artifacts are stored (else **`.layoutlens/`** under the process working directory; typically gitignored) |
+| `pnpm server` | Runs **`layoutlens-server`** after `pnpm build`. Use `pnpm server -- --help` for flags (`--host` defaults to **127.0.0.1**, `--port`, `--data-dir`, `--static-dir`, etc.). |
 
-Studio supports light/dark theme, scan history, report workspace with viewport tabs, severity/type filters, zoom/pan overlays, visual regression slider/side-by-side/diff views, and honest empty states when no report is loaded.
+The API binds to **127.0.0.1** by default, validates origins, and applies URL policy (schemes, SSRF-related checks, optional private-network rules). See `packages/server/src/cli.ts` and `packages/server/src/http-api.ts`.
 
-## Monorepo layout
+---
+
+## Interactive DOM Inspector
+
+- **Studio:** After opening a report, enable inspector-style interaction on the screenshot (element selection, related navigation) where snapshot data exists.
+- **Server-driven scans** run with inspector capture **enabled** for Studio (`packages/server/src/scan-service.ts`).
+- **Offline HTML** bundles can include the same inspector experience when reports embed the snapshot (see `packages/report` Playwright tests for `file://` behavior).
+
+Inspector data is **bounded** (limits on depth, elements, selector length); huge pages may truncate — the report states when limits apply.
+
+---
+
+## Visual regression
+
+1. Create a baseline directory with explicit screenshots + manifest:
+
+   ```bash
+   pnpm cli baseline create "file://${PWD}/examples/broken-layout/index.html" --baseline-dir ./baselines/example
+   ```
+
+2. Compare on scan:
+
+   ```bash
+   pnpm cli scan "file://${PWD}/examples/broken-layout/index.html" \
+     --baseline-dir ./baselines/example \
+     --format html --output ./layoutlens-report
+   ```
+
+   On Windows PowerShell, use the same absolute `file:///D:/.../examples/broken-layout/index.html` form as in Quick Start.
+
+Optional `examples/visual.config.json` documents masks and stability tuning.
+
+---
+
+## Navigation reliability
+
+Scans use **`domcontentloaded`** for initial navigation, then a **readiness** phase (including bounded handling when `load` is slow or background network activity continues), separate **screenshot** timeouts, and **per-viewport** inspection status in JSON/Studio. This avoids relying on `networkidle` for long-lived sites.
+
+---
+
+## Reports and CLI exit codes
+
+- **JSON** reports include `schemaVersion` (e.g. **1.3** for Phase 9.2.1 fields), `summary`, `viewports[]`, optional `navigation`, `navigationDiagnostics`, and inspector snapshots when captured.
+- **`exitCodeForResult`** (`packages/cli/src/format.ts`):
+  - **0** — No horizontal overflow issues, no visual regression failures, navigation does not block trust, and the scan **fully** completed all viewports (no partial/skipped/failed inspection counts).
+  - **1** — Layout and/or visual differences, **or** HTTP/navigation conditions treated as issues, **or** **partial / failed** viewport inspection.
+  - **2** — CLI usage error or thrown scan error (e.g. invalid args, hard failure before a usable result).
+
+---
+
+## Architecture
+
+Monorepo (pnpm workspaces):
 
 | Package / app | Role |
-|--------|------|
-| `packages/shared` | Types, severity rules, classification, JSON report schema |
-| `packages/core` | Playwright scan, overflow analysis, screenshots, baselines |
-| `packages/visual` | Pixelmatch compare, manifests, masks, stability helpers |
+|---------------|------|
+| `packages/shared` | Types, report schema, classification, inspector and navigation helpers |
+| `packages/core` | Playwright scanner, overflow and responsive analysis, screenshots |
+| `packages/visual` | Baselines, pixelmatch compare, masks |
 | `packages/report` | Offline HTML report generator |
-| `packages/cli` | Commander CLI (`layoutlens scan`, `baseline`) |
-| `packages/server` | Loopback scan API and Vite plugin for Studio |
-| `apps/studio` | LayoutLens Studio (React + Vite) |
-| `examples/broken-layout` | Intentionally broken demo site |
-| `examples/layout-cases` | HTML fixtures for integration tests |
+| `packages/cli` | Commander CLI |
+| `packages/server` | Local scan API + static Studio serving |
+| `apps/studio` | LayoutLens Studio UI |
+| `examples/` | Demos and HTML fixtures for tests (`broken-layout`, `layout-cases`, `responsive-cases`, etc.) |
 
-## Scripts
+---
+
+## Development and testing
 
 ```bash
-pnpm test      # unit + integration tests (integration needs Chromium)
-pnpm build     # compile all packages
-pnpm lint      # typecheck all packages
+pnpm lint      # Typecheck all packages
+pnpm test      # Unit + integration tests (Chromium required for Playwright suites)
+pnpm build     # Build all packages
 pnpm browser:install
-pnpm studio    # Studio dev server with embedded scan API
 ```
 
-## False-positive reduction
+---
 
-LayoutLens tries to report **root-cause** elements, not every wrapper:
+## Privacy and local-first principles
 
-- Skips hidden or zero-size nodes
-- Ignores internal scroll containers (`overflow-x: auto/scroll/hidden`) that clip content without extending the page
-- Prefers **leaf** elements that extend the viewport (drops ancestors like `main` when a child is the real culprit)
-- Uses a small pixel tolerance for sub-pixel layout noise
-- **Phase 7** separates confirmed scroll issues from clipped carousels and other excluded overflow via evidence classification
+- **No** mandatory cloud service or signup.
+- **No** API keys shipped for scanning.
+- **No** telemetry in this repository’s tooling.
+- Scan output and history live in your configured/local directories.
 
-## Principles
+---
 
-- No AI APIs or API keys
-- No cloud backend
-- No telemetry
-- Strict TypeScript
+## Roadmap
+
+**Planned (Phase 10 — not implemented in this README’s feature set):**
+
+- Multi-page website scanning (same-origin, bounded crawl)
+- Site-wide Studio dashboard
+- Deeper real-time progress for multi-step runs
+- Cancellation / retry orchestration for multi-page workflows
+- Custom viewport configuration in product UI
+
+No release dates are committed here.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. Please run `pnpm lint` and `pnpm test` before submitting substantial changes.
+
+---
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+[MIT License](LICENSE) — Copyright (c) 2026 Mustafa Basdemir
