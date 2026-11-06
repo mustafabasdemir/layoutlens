@@ -1,3 +1,4 @@
+import { isSiteScanEnvelope } from "../data/load-report";
 import { useReports } from "../data/report-store";
 import { HistoryPage } from "../features/history/HistoryPage";
 import { OverviewPage } from "../features/overview/OverviewPage";
@@ -33,7 +34,8 @@ export function App() {
   const crumbs: Crumb[] = [{ label: "Studio", href: hrefFor("overview") }];
   if (route !== "overview") crumbs.push({ label: ROUTE_TITLES[route], href: hrefFor(route) });
   if ((route === "reports" || route === "visual") && active) {
-    const { host } = displayUrl(active.report.url);
+    const url = isSiteScanEnvelope(active.report) ? active.report.rootUrl : active.report.url;
+    const { host } = displayUrl(url);
     crumbs.push({ label: host });
   }
   const actions = route === "reports" || route === "visual" ? <ReportPicker compact goToReports={false} /> : null;

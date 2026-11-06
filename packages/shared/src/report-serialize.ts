@@ -1,17 +1,28 @@
 import type { JsonReport, ScanResult } from "@layoutlens/shared";
-import { REPORT_SCHEMA_VERSION } from "@layoutlens/shared";
+import {
+  DEFAULT_VIEWPORT_SPECS,
+  REPORT_SCHEMA_VERSION,
+  REPORT_SCHEMA_VERSION_1_4,
+} from "@layoutlens/shared";
 import { navigationQuality } from "./navigation.js";
 
-export function scanResultToJsonReport(result: ScanResult): JsonReport {
-  const visualByWidth = new Map(
-    (result.visual?.comparisons ?? []).map((c) => [c.width, c]),
-  );
+function dimensionsKey(width: number, height: number): string {
+  return `${width}x${height}`;
+}
 
+function isDefaultPresetDimensions(width: number, height: number): boolean {
+  return DEFAULT_VIEWPORT_SPECS.some((s) => s.width === width && s.height === height);
+}
+
+export function scanResultToJsonReport(result: ScanResult): JsonReport {
   const nav = result.navigation ?? result.summary.navigation;
   const scanTrust = nav ? navigationQuality(nav) : result.summary.scanTrust;
+  const schemaVersion = result.viewports.some((v) => !isDefaultPresetDimensions(v.width, v.viewportHeight))
+    ? REPORT_SCHEMA_VERSION_1_4
+    : REPORT_SCHEMA_VERSION;
 
   return {
-    schemaVersion: REPORT_SCHEMA_VERSION,
+    schemaVersion,
     tool: "layoutlens",
     url: result.url,
     scannedAt: result.scannedAt,
@@ -54,11 +65,16 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
     ...(nav ? { navigation: nav } : {}),
     ...(result.navigationDiagnostics ? { navigationDiagnostics: result.navigationDiagnostics } : {}),
     viewports: result.viewports.map((v) => {
-      const visual = visualByWidth.get(v.width);
+      const visual = result.visual?.comparisons.find(
+        (c) => c.width === v.width && (c.viewportHeight === undefined || c.viewportHeight === v.viewportHeight),
+      );
       return {
         width: v.width,
         label: v.label,
         viewportHeight: v.viewportHeight,
+        ...(!isDefaultPresetDimensions(v.width, v.viewportHeight)
+          ? { viewportDimensionsKey: dimensionsKey(v.width, v.viewportHeight) }
+          : {}),
         documentScrollWidth: v.documentScrollWidth,
         documentClientWidth: v.documentClientWidth,
         hasHorizontalOverflow: v.hasHorizontalOverflow,
@@ -82,7 +98,7 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
               },
             }
           : {}),
-        findings: v.findings.map((f) => ({
+        findings: (v.findings ?? []).map((f) => ({
           id: f.id,
           selector: f.selector,
           tagName: f.tagName,
@@ -102,14 +118,14 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
           invisible: f.invisible,
           ...(f.clipping ? { clipping: { ...f.clipping, boundingBox: { ...f.clipping.boundingBox } } } : {}),
           ...(f.pattern ? { pattern: f.pattern } : {}),
-          related: f.related.map((r) => ({ ...r, boundingBox: { ...r.boundingBox } })),
+          related: (f.related ?? []).map((r) => ({ ...r, boundingBox: { ...r.boundingBox } })),
           relatedCount: f.relatedCount,
         })),
         ...(v.inspector ? { inspector: v.inspector } : {}),
-        excluded: v.excluded.map((e) => ({
+        excluded: (v.excluded ?? []).map((e) => ({
           ...e,
           boundingBox: { ...e.boundingBox },
-          samples: e.samples.map((s) => ({ ...s, boundingBox: { ...s.boundingBox } })),
+          samples: (e.samples ?? []).map((s) => ({ ...s, boundingBox: { ...s.boundingBox } })),
         })),
         analysis: { ...v.analysis },
         ...(v.advancedFindings?.length
@@ -139,6 +155,7 @@ export function scanResultToJsonReport(result: ScanResult): JsonReport {
             failedCount: result.visual.failedCount,
             comparisons: result.visual.comparisons.map((c) => ({
               width: c.width,
+              ...(c.viewportHeight !== undefined ? { viewportHeight: c.viewportHeight } : {}),
               label: c.label,
               status: c.status,
               diffPixels: c.diffPixels,

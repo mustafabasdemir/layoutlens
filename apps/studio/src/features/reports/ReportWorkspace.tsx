@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Layers, MousePointer2, X } from "lucide-react";
-import type { LoadedReport } from "../../data/load-report";
+import type { LoadedPageReport } from "../../data/load-report";
 import { navigate } from "../../app/router";
 import { navigationBannerMessage, navigationRedirectNote } from "@layoutlens/shared";
 import {
@@ -48,7 +48,7 @@ function isSafeHttpUrl(url: string): boolean {
   }
 }
 
-export function ReportHeader({ loaded, onClose }: { loaded: LoadedReport; onClose(): void }) {
+export function ReportHeader({ loaded, onClose }: { loaded: LoadedPageReport; onClose(): void }) {
   const { report } = loaded;
   const health = HEALTH[reportHealth(report)];
   const { host, rest } = displayUrl(report.url);
@@ -145,9 +145,10 @@ export function ReportHeader({ loaded, onClose }: { loaded: LoadedReport; onClos
   );
 }
 
-export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onClose(): void }) {
+export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedPageReport; onClose(): void }) {
   const { report } = loaded;
   const firstWidth = report.viewports[0]?.width ?? 0;
+  const skipAutoSelectOnce = useRef(false);
   const [width, setWidth] = useState(firstWidth);
   const [filters, setFilters] = useState<FindingFilters>(DEFAULT_FILTERS);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -161,15 +162,21 @@ export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onC
   const [inspectorCandidateIndex, setInspectorCandidateIndex] = useState(0);
 
   useEffect(() => {
-    setWidth(firstWidth);
-    setSelectedKey(null);
+    if (loaded.initialFocus) {
+      setWidth(loaded.initialFocus.viewportWidth);
+      setSelectedKey(loaded.initialFocus.findingKey);
+      skipAutoSelectOnce.current = true;
+    } else {
+      setWidth(firstWidth);
+      setSelectedKey(null);
+    }
     setInspectorMode(false);
     setInspectorSelectedId(null);
     setInspectorHoverId(null);
     setInspectorHitUncertain(false);
     setInspectorCandidates([]);
     setInspectorCandidateIndex(0);
-  }, [loaded.id, firstWidth]);
+  }, [loaded.id, firstWidth, loaded.initialFocus]);
 
   const viewport = report.viewports.find((v) => v.width === width) ?? report.viewports[0];
   const allOverflow = useMemo(
@@ -192,6 +199,11 @@ export function ReportWorkspace({ loaded, onClose }: { loaded: LoadedReport; onC
 
   const firstVisibleKey = visibleOverflow[0] ? findingKey(visibleOverflow[0]) : advancedRefs[0] ? workspaceKey(advancedRefs[0]) : null;
   useEffect(() => {
+    if (skipAutoSelectOnce.current) {
+      skipAutoSelectOnce.current = false;
+      setZoom(1);
+      return;
+    }
     setSelectedKey(firstVisibleKey);
     setZoom(1);
     setInspectorMode(false);

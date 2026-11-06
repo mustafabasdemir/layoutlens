@@ -3,6 +3,7 @@ import { ArrowRight, Copy, Globe } from "lucide-react";
 import { cliCommandFor, ScanApiError, ScanServiceUnavailableError } from "../../api/scan-api";
 import { useScanJobs } from "../../data/scan-jobs";
 import { validateScanUrl } from "../../lib/url";
+import type { StartScanOptions } from "../../api/scan-api";
 import { Button, Notice } from "../../ui/primitives";
 import { ScanProgress } from "../scan/ScanProgress";
 
@@ -36,7 +37,7 @@ export function useScanSubmit() {
   const [error, setError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<{ message: string; command: string } | null>(null);
 
-  async function submit(value: string): Promise<void> {
+  async function submit(value: string, options?: StartScanOptions): Promise<void> {
     setUnavailable(null);
     const result = validateScanUrl(value);
     if (!result.ok) {
@@ -45,7 +46,7 @@ export function useScanSubmit() {
     }
     setError(null);
     try {
-      await startScan(result.url);
+      await startScan(result.url, options);
     } catch (err) {
       if (err instanceof ScanServiceUnavailableError) {
         setUnavailable({ message: err.message, command: cliCommandFor(result.url) });

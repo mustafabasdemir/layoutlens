@@ -83,7 +83,9 @@ export class ScanStore {
   async removeArtifacts(id: string): Promise<void> {
     const dir = this.dirFor(id);
     await Promise.all(
-      ["screenshots", "visual", "report.json", "index.html"].map((p) => rm(join(dir, p), { recursive: true, force: true })),
+      ["pages", "screenshots", "visual", "site-scan.json", "report.json", "index.html"].map((p) =>
+        rm(join(dir, p), { recursive: true, force: true }),
+      ),
     );
   }
 

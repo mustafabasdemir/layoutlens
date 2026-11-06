@@ -138,14 +138,14 @@ export function EmptyState({
   children,
   actions,
 }: {
-  icon: ReactNode;
+  icon: ReactNode | null;
   title: string;
   children?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <div className="empty-state">
-      <div className="empty-icon" aria-hidden="true">{icon}</div>
+      {icon ? <div className="empty-icon" aria-hidden="true">{icon}</div> : null}
       <h3 className="empty-title">{title}</h3>
       {children ? <div className="empty-text">{children}</div> : null}
       {actions ? <div className="empty-actions">{actions}</div> : null}

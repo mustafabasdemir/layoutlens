@@ -46,6 +46,8 @@ export interface ViewportInspectionDiagnostics {
 
 export interface ScanNavigationDiagnostics {
   firstViewportWidth: number;
+  /** Phase 10 — present when viewport height is explicit (custom dimensions). */
+  firstViewportHeight?: number;
   firstGotoWaitUntil: "domcontentloaded";
   firstGotoDurationMs: number;
   firstNavigationCommitted: boolean;

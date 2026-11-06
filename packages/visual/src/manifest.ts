@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, copyFile, access } from "node:fs/promises";
 import { join } from "node:path";
 import {
   BASELINE_MANIFEST_VERSION,
-  VIEWPORT_WIDTHS,
+  DEFAULT_VIEWPORT_SPECS,
   getViewportLabel,
   mergeVisualConfig,
   type BaselineManifest,
@@ -15,23 +15,22 @@ import pixelmatch from "pixelmatch";
 import { sha256FileHex, urlKeyForBaseline } from "./hash.js";
 import { masksForViewport, applyMaskRegions } from "./masks.js";
 import { buildHighlightDiffRgba } from "./diff-highlight.js";
+import {
+  BASELINE_SCREENSHOTS_DIR,
+  VISUAL_DIFF_SUBDIR,
+  baselineScreenshotPath,
+  diffScreenshotRelativePath,
+  reportBaselineCopyRelativePath,
+} from "./paths.js";
 
 export const BASELINE_MANIFEST_FILE = "manifest.json" as const;
 export const BASELINE_CONFIG_FILE = "visual.config.json" as const;
-export const BASELINE_SCREENSHOTS_DIR = "screenshots" as const;
-export const VISUAL_DIFF_SUBDIR = "visual" as const;
+export { BASELINE_SCREENSHOTS_DIR, VISUAL_DIFF_SUBDIR, baselineScreenshotPath, diffScreenshotRelativePath, reportBaselineCopyRelativePath } from "./paths.js";
 
-export function baselineScreenshotPath(width: number): string {
-  return `${BASELINE_SCREENSHOTS_DIR}/viewport-${width}.png`;
-}
-
-export function diffScreenshotRelativePath(width: number): string {
-  return `${VISUAL_DIFF_SUBDIR}/diff-viewport-${width}.png`;
-}
-
-export function reportBaselineCopyRelativePath(width: number): string {
-  return `${VISUAL_DIFF_SUBDIR}/baseline-viewport-${width}.png`;
-}
+const DEFAULT_DIMENSIONS: readonly { width: number; height: number }[] = DEFAULT_VIEWPORT_SPECS.map((s) => ({
+  width: s.width,
+  height: s.height,
+}));
 
 export async function readBaselineManifest(
   baselineDirectory: string,
@@ -144,8 +143,9 @@ export async function writeBaselineFromScreenshots(options: {
     recursive: true,
   });
 
-  for (const width of VIEWPORT_WIDTHS) {
-    const relativePath = baselineScreenshotPath(width);
+  const dims = options.existingManifest?.viewportDimensions ?? DEFAULT_DIMENSIONS;
+  for (const { width, height } of dims) {
+    const relativePath = baselineScreenshotPath(width, height);
     const source = join(options.screenshotDirectory, relativePath);
     const target = join(options.baselineDirectory, relativePath);
     if (source !== target) {
@@ -155,6 +155,7 @@ export async function writeBaselineFromScreenshots(options: {
     const png = PNG.sync.read(buffer);
     entries.push({
       width,
+      viewportHeight: height,
       relativePath,
       sha256: await sha256FileHex(buffer),
       widthPx: png.width,
@@ -175,6 +176,7 @@ export async function writeBaselineFromScreenshots(options: {
     url: options.url,
     urlKey: urlKeyForBaseline(options.url),
     viewportHeight: options.viewportHeight,
+    viewportDimensions: dims.map((d) => ({ width: d.width, height: d.height })),
     createdAt: options.existingManifest?.createdAt ?? now,
     updatedAt: now,
     entries,
@@ -208,13 +210,14 @@ export function assertSafeBaselineUpdate(
 export async function writeDiffPng(
   directory: string,
   width: ViewportWidth,
+  viewportHeight: number,
   diffBuffer: Buffer,
   baselineRgba: Buffer,
   widthPx: number,
   heightPx: number,
 ): Promise<string> {
   await mkdir(join(directory, VISUAL_DIFF_SUBDIR), { recursive: true });
-  const relativePath = diffScreenshotRelativePath(width);
+  const relativePath = diffScreenshotRelativePath(width, viewportHeight);
   const highlight = buildHighlightDiffRgba(
     baselineRgba,
     diffBuffer,
@@ -231,11 +234,12 @@ export async function copyBaselineIntoReport(
   reportDirectory: string,
   baselineDirectory: string,
   width: ViewportWidth,
+  viewportHeight: number,
 ): Promise<string> {
   await mkdir(join(reportDirectory, VISUAL_DIFF_SUBDIR), { recursive: true });
-  const relativePath = reportBaselineCopyRelativePath(width);
+  const relativePath = reportBaselineCopyRelativePath(width, viewportHeight);
   await copyFile(
-    join(baselineDirectory, baselineScreenshotPath(width)),
+    join(baselineDirectory, baselineScreenshotPath(width, viewportHeight)),
     join(reportDirectory, relativePath),
   );
   return relativePath;

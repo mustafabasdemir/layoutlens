@@ -117,6 +117,7 @@ describe("scan API with the real Playwright scanner", () => {
     expect(info.service).toBe("layoutlens-scan-api");
     expect(info.viewportWidths).toEqual([390, 768, 1440]);
     expect(info.limits.maxConcurrentScans).toBe(1);
+    expect(info.limits.maxRetryAttemptsPerTask).toBeGreaterThanOrEqual(1);
     expect(res.headers["access-control-allow-origin"]).toBeUndefined();
   });
 

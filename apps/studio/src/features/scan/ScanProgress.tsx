@@ -14,12 +14,16 @@ function duration(view: ScanJobView): string | null {
 export function ScanStateBadge({ scan }: { scan: ScanJobView }) {
   const trust = scan.summary?.scanTrust;
   const partial = scan.summary?.scanCompletionStatus === "partial";
+  const sitePartial = scan.siteSummary && scan.siteSummary.failedPages + scan.siteSummary.skippedPages > 0;
   switch (scan.state) {
     case "queued":
       return <Badge tone="info">Queued</Badge>;
     case "running":
       return <Badge tone="accent">Scanning</Badge>;
     case "completed":
+      if (scan.scanMode === "multi_page" && sitePartial) {
+        return <Badge tone="warning">Site scan (partial)</Badge>;
+      }
       if (partial) {
         return <Badge tone="warning">Completed (partial)</Badge>;
       }
@@ -37,11 +41,79 @@ export function ScanStateBadge({ scan }: { scan: ScanJobView }) {
   }
 }
 
+function SiteRunningTelemetry({ scan }: { scan: ScanJobView }) {
+  const site = scan.progress.site;
+  if (!site || scan.scanMode !== "multi_page") return null;
+  const vp = site.currentViewport;
+  const vpDone = site.viewportTasksCompleted;
+  const vpTotal = site.viewportTasksTotal;
+  const activeIdx = site.activePageIndex;
+  const activeTotal = site.activePageTotal;
+  const completedPages = site.completedPages ?? 0;
+  const scheduled = site.scheduledPages;
+  const showActiveExplainer =
+    activeIdx !== undefined &&
+    activeTotal !== undefined &&
+    scheduled !== undefined &&
+    completedPages < activeIdx;
+
+  return (
+    <dl className="scan-result-stats scan-site-live" data-testid="site-scan-live-stats">
+      <div>
+        <dt>Discovered</dt>
+        <dd>{site.discoveredPages ?? "—"}</dd>
+      </div>
+      <div>
+        <dt>Pages finished</dt>
+        <dd>
+          {completedPages}/{site.scheduledPages ?? "?"} succeeded · {site.failedPages ?? 0} failed
+        </dd>
+      </div>
+      {vpDone !== undefined && vpTotal !== undefined ? (
+        <div>
+          <dt>Viewport tasks</dt>
+          <dd>
+            {vpDone}/{vpTotal} finished
+          </dd>
+        </div>
+      ) : null}
+      <div>
+        <dt>Active page</dt>
+        <dd className="mono small">
+          {activeIdx !== undefined && activeTotal !== undefined
+            ? `Page ${activeIdx} of ${activeTotal} in the queue`
+            : "—"}
+        </dd>
+      </div>
+      {showActiveExplainer ? (
+        <div>
+          <dt>Note</dt>
+          <dd className="muted small">
+            Several pages run at once; “active page” is the one being measured now, not how many have finished.
+          </dd>
+        </div>
+      ) : null}
+      <div>
+        <dt>Current URL</dt>
+        <dd className="mono small">{site.currentPageUrl ? site.currentPageUrl : "—"}</dd>
+      </div>
+      <div>
+        <dt>Viewport</dt>
+        <dd className="mono small">
+          {vp ? `${vp.label} (${vp.width}×${vp.height})${vp.total ? ` · ${vp.index}/${vp.total}` : ""}` : "—"}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
 /** Live status of one scan. Percentages come only from completed scan stages. */
 export function ScanProgress({ scan, onRetry }: { scan: ScanJobView; onRetry?: () => void }) {
   const { cancelScan, openResults, openingId, openError } = useScanJobs();
   const { host, rest } = displayUrl(scan.url);
   const pct = scan.state === "running" ? progressPercent(scan.progress) : null;
+  const indeterminateRunning = scan.state === "running" && scan.progress.indeterminate;
+  const showDeterminateBar = scan.state === "running" && pct !== null && !indeterminateRunning;
 
   return (
     <Card className="scan-progress" aria-label="Scan status" data-testid="scan-progress" data-state={scan.state}>
@@ -59,6 +131,7 @@ export function ScanProgress({ scan, onRetry }: { scan: ScanJobView; onRetry?: (
           <span className="scan-progress-url">
             <span className="report-host">{host}</span>
             <span className="report-path">{rest}</span>
+            {scan.scanMode === "multi_page" ? <span className="muted small"> · Multi-page</span> : null}
           </span>
         </div>
         <ScanStateBadge scan={scan} />
@@ -74,7 +147,8 @@ export function ScanProgress({ scan, onRetry }: { scan: ScanJobView; onRetry?: (
         {scan.state === "running" ? (
           <>
             <p className="scan-progress-message" data-testid="scan-progress-message">{scan.progress.message}</p>
-            {pct !== null ? (
+            <SiteRunningTelemetry scan={scan} />
+            {showDeterminateBar ? (
               <div className="progress">
                 <div
                   className="progress-track"
@@ -91,11 +165,85 @@ export function ScanProgress({ scan, onRetry }: { scan: ScanJobView; onRetry?: (
                   {scan.progress.completedSteps} of {scan.progress.totalSteps} stages · {pct}%
                 </span>
               </div>
+            ) : indeterminateRunning ? (
+              <div className="progress progress-indeterminate">
+                <div
+                  className="progress-track"
+                  role="progressbar"
+                  aria-label="Scan progress"
+                  aria-valuetext={scan.progress.message}
+                >
+                  <div className="progress-fill" />
+                </div>
+                <span className="progress-label">
+                  {scan.progress.site?.phase === "discovering"
+                    ? "Discovering URLs — page count is not final yet"
+                    : "Working — detailed counts appear after URLs are scheduled"}
+                </span>
+              </div>
             ) : null}
           </>
         ) : null}
 
-        {scan.state === "completed" && scan.summary ? (
+        {scan.state === "completed" && scan.scanMode === "multi_page" && scan.siteSummary ? (
+          <div className="scan-result">
+            {scan.siteSummary.scanTrustWorst &&
+            (scan.siteSummary.scanTrustWorst === "http_error" ||
+              scan.siteSummary.scanTrustWorst === "network_error" ||
+              scan.siteSummary.scanTrustWorst === "challenge_uncertain") ? (
+              <Notice
+                tone={
+                  scan.siteSummary.scanTrustWorst === "challenge_uncertain"
+                    ? "warning"
+                    : "danger"
+                }
+                title="Navigation quality"
+              >
+                <p className="mono small">Worst page: {scan.siteSummary.scanTrustWorst}</p>
+              </Notice>
+            ) : null}
+            <dl className="scan-result-stats" data-testid="site-scan-summary-stats">
+              <div>
+                <dt>Pages</dt>
+                <dd>
+                  {scan.siteSummary.completedPages}/{scan.siteSummary.totalPages}
+                </dd>
+              </div>
+              <div>
+                <dt>Viewports</dt>
+                <dd>{formatCount(scan.siteSummary.totalViewportsCompleted)}</dd>
+              </div>
+              <div>
+                <dt>Confirmed layout (overflow)</dt>
+                <dd>{formatCount(scan.siteSummary.confirmedLayoutIssues)}</dd>
+              </div>
+              <div>
+                <dt>Potential layout (overflow)</dt>
+                <dd>{formatCount(scan.siteSummary.potentialFindings)}</dd>
+              </div>
+              <div>
+                <dt>Responsive advisory</dt>
+                <dd>{formatCount(scan.siteSummary.responsiveAdvisories)}</dd>
+              </div>
+              <div>
+                <dt>Failed pages</dt>
+                <dd>{formatCount(scan.siteSummary.failedPages)}</dd>
+              </div>
+            </dl>
+            <p className="field-hint">
+              Open the site dashboard for every URL, screenshots, and cross-page filters.
+              {duration(scan) ? ` Finished in ${duration(scan)}.` : ""}
+            </p>
+            <div className="scan-progress-actions">
+              <Button variant="primary" onClick={() => void openResults(scan.id)} disabled={openingId === scan.id}>
+                {openingId === scan.id ? "Opening…" : "View site results"}
+              </Button>
+            </div>
+            {openError ? <p className="field-error" role="alert">{openError}</p> : null}
+          </div>
+        ) : null}
+
+        {scan.state === "completed" && scan.summary && scan.scanMode !== "multi_page" ? (
           <div className="scan-result">
             {scan.summary.scanCompletionStatus === "partial" || scan.summary.scanCompletionStatus === "failed" ? (
               <Notice tone="warning" title="Viewport inspection incomplete" data-testid="scan-partial-notice">

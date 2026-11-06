@@ -35,6 +35,8 @@ export type VisualComparisonStatus = "pass" | "fail" | "missing-baseline";
 
 export interface ViewportVisualComparison {
   width: ViewportWidth;
+  /** Phase 10 — height for disambiguation when widths repeat. */
+  viewportHeight?: number;
   label: string;
   status: VisualComparisonStatus;
   diffPixels: number;
@@ -55,6 +57,8 @@ export interface VisualRegressionResult {
 
 export interface BaselineManifestEntry {
   width: ViewportWidth;
+  /** Phase 10 — logical viewport height when dimensions are explicit. */
+  viewportHeight?: number;
   relativePath: string;
   sha256: string;
   widthPx: number;
@@ -66,6 +70,8 @@ export interface BaselineManifest {
   url: string;
   urlKey: string;
   viewportHeight: number;
+  /** Phase 10 — when set, baseline screenshots use explicit width×height paths. */
+  viewportDimensions?: readonly { width: number; height: number }[];
   createdAt: string;
   updatedAt: string;
   entries: BaselineManifestEntry[];

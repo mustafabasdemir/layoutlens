@@ -12,6 +12,7 @@ export async function captureViewportScreenshot(
   page: Page,
   artifactsDirectory: string,
   width: number,
+  height: number,
   stability?: ScreenshotStabilityOptions,
   options?: { skipStabilize?: boolean; timeoutMs?: number },
 ): Promise<string> {
@@ -20,7 +21,7 @@ export async function captureViewportScreenshot(
   }
   const screenshotsDir = join(artifactsDirectory, SCREENSHOT_SUBDIR);
   await mkdir(screenshotsDir, { recursive: true });
-  const relativePath = viewportScreenshotRelativePath(width);
+  const relativePath = viewportScreenshotRelativePath(width, height);
   await page.screenshot({
     path: join(artifactsDirectory, relativePath),
     type: "png",

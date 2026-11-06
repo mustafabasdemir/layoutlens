@@ -63,7 +63,9 @@ export type ApiHandler = (req: IncomingMessage, res: ServerResponse) => Promise<
  *   GET  /api/health
  *   GET  /api/scans                     POST /api/scans {url}
  *   GET  /api/scans/:id                 POST /api/scans/:id/cancel
+ *   POST /api/scans/:id/retry          — Phase 10.3 retry failed site-scan tasks
  *   GET  /api/scans/:id/results         GET  /api/scans/:id/files/(screenshots|visual)/<name>.png
+ *   GET  /api/scans/:id/pages/:n/report  — per-page JsonReport (multi-page scans only)
  */
 export function createApiHandler(service: ScanService, guard: RequestGuardOptions): ApiHandler {
   return async (req, res) => {
@@ -81,7 +83,7 @@ export function createApiHandler(service: ScanService, guard: RequestGuardOption
       if (parts[0] !== "scans") throw new ApiError(404, "not_found", "Unknown API route.");
 
       if (parts.length === 1) {
-        if (method === "GET") return sendJson(res, 200, { scans: service.list() });
+        if (method === "GET") return sendJson(res, 200, { scans: await service.list() });
         if (method === "POST") {
           const view = await service.create(await readJsonBody(req));
           return sendJson(res, 202, view, { Location: `${SCAN_API_PREFIX}/scans/${view.id}` });
@@ -92,15 +94,30 @@ export function createApiHandler(service: ScanService, guard: RequestGuardOption
       const id = parts[1]!;
       if (parts.length === 2) {
         if (method !== "GET") throw methodNotAllowed();
-        return sendJson(res, 200, service.get(id));
+        return sendJson(res, 200, await service.get(id));
       }
       if (parts.length === 3 && parts[2] === "results") {
         if (method !== "GET") throw methodNotAllowed();
         return sendJson(res, 200, await service.results(id));
       }
+      if (
+        parts.length === 5 &&
+        parts[2] === "pages" &&
+        parts[4] === "report" &&
+        /^[0-9]+$/.test(parts[3]!)
+      ) {
+        if (method !== "GET") throw methodNotAllowed();
+        const n = Number(parts[3]!);
+        return sendJson(res, 200, await service.pageReport(id, n));
+      }
       if (parts.length === 3 && parts[2] === "cancel") {
         if (method !== "POST") throw methodNotAllowed();
         return sendJson(res, 202, await service.cancel(id));
+      }
+      if (parts.length === 3 && parts[2] === "retry") {
+        if (method !== "POST") throw methodNotAllowed();
+        const view = await service.retry(id, await readJsonBody(req));
+        return sendJson(res, 202, view);
       }
       if (parts[2] === "files" && parts.length >= 4) {
         if (method !== "GET") throw methodNotAllowed();

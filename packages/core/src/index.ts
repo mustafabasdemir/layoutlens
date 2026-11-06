@@ -1,4 +1,6 @@
 export { scanUrl } from "./scan.js";
+export { scanSite, rebuildSiteScanArtifacts, type SiteScanPageRecord } from "./site-scan.js";
+export { scanResultFromJsonReport } from "./json-report-to-scan.js";
 export {
   detectHorizontalOverflow,
   computeDocumentOverflow,

@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./scan-url-policy": {
+      "types": "./dist/scan-url-policy.d.ts",
+      "import": "./dist/scan-url-policy.js"
     }
   },
   "scripts": {

@@ -1,4 +1,4 @@
-import type { JsonReport, JsonReportAdvancedFinding, JsonReportFinding } from "@layoutlens/shared";
+import type { JsonReport, JsonReportAdvancedFinding, JsonReportFinding, JsonSiteWideFinding } from "@layoutlens/shared";
 
 const ADV_PREFIX = "a:";
 
@@ -56,4 +56,21 @@ export function parseWorkspaceKey(key: string): { kind: "overflow" | "advanced";
   const index = Number(i);
   if (!Number.isFinite(viewportWidth) || !Number.isFinite(index)) return null;
   return { kind: "overflow", viewportWidth, index };
+}
+
+/** Map a site-wide finding row to a workspace selection key (`width:index` or `a:width:index`). */
+export function workspaceKeyForSiteWideFinding(report: JsonReport, f: JsonSiteWideFinding): string | null {
+  const vp = report.viewports.find((v) => v.width === f.viewportWidth);
+  if (!vp) return null;
+  if (f.kind === "overflow") {
+    const byId = vp.findings.findIndex((x) => x.id === f.findingId);
+    if (byId >= 0) return `${f.viewportWidth}:${byId}`;
+    const bySel = vp.findings.findIndex((x) => x.selector === f.selector);
+    if (bySel >= 0) return `${f.viewportWidth}:${bySel}`;
+    return null;
+  }
+  const adv = vp.advancedFindings ?? [];
+  const byId = adv.findIndex((x) => x.id === f.findingId);
+  if (byId >= 0) return `${ADV_PREFIX}${f.viewportWidth}:${byId}`;
+  return null;
 }

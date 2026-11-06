@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Columns2, Diff, Layers, SplitSquareHorizontal } from "lucide-react";
 import type { JsonReportViewport } from "@layoutlens/shared";
-import type { LoadedReport } from "../../data/load-report";
+import type { LoadedPageReport } from "../../data/load-report";
+import { isLoadedSiteScan } from "../../data/load-report";
 import { useReports } from "../../data/report-store";
 import { displayUrl, formatCount, formatPercent } from "../../lib/format";
 import { useImageSize, type ImageState } from "../../ui/hooks";
@@ -53,7 +54,7 @@ function ImageFrame({
 const MISSING_BASELINE =
   "No baseline screenshot exists for this viewport. Create one explicitly with `pnpm cli baseline create <url> --baseline-dir <dir>` — Studio never creates or updates baselines.";
 
-function VisualStudio({ loaded }: { loaded: LoadedReport }) {
+function VisualStudio({ loaded }: { loaded: LoadedPageReport }) {
   const { report } = loaded;
   const compared = useMemo(() => report.viewports.filter((v) => v.visualCompare), [report]);
   const [width, setWidth] = useState(compared[0]?.width ?? 0);
@@ -227,10 +228,17 @@ function VisualStudio({ loaded }: { loaded: LoadedReport }) {
 
 export function VisualRegressionPage() {
   const { active } = useReports();
+  const ready = active && !isLoadedSiteScan(active);
   return (
     <div className="page">
       <ReportLoadError />
-      {active ? <VisualStudio loaded={active} /> : <NoReportState title="Open a report to compare screenshots" />}
+      {ready ? (
+        <VisualStudio loaded={active} />
+      ) : active && isLoadedSiteScan(active) ? (
+        <NoReportState title="Open a page report for visual comparison" />
+      ) : (
+        <NoReportState title="Open a report to compare screenshots" />
+      )}
     </div>
   );
 }

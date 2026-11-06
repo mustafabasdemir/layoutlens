@@ -83,6 +83,7 @@ export function navigationBannerMessage(nav: ScanNavigation): string | null {
 export function navigationRedirectNote(nav: ScanNavigation): string | null {
   if (!nav.documentLoaded) return null;
   if (nav.httpStatus !== null && nav.httpStatus >= 400) return null;
-  if (nav.redirectChain.length === 0) return null;
+  const chain = nav.redirectChain ?? [];
+  if (chain.length === 0) return null;
   return `Redirected: results apply to the final URL below.`;
 }

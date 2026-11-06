@@ -3,11 +3,11 @@ import { join } from "node:path";
 import {
   getViewportLabel,
   mergeVisualConfig,
+  type BaselineManifest,
   type ScanArtifactOptions,
   type ScanResult,
   type ViewportVisualComparison,
   type VisualRegressionResult,
-  VIEWPORT_WIDTHS,
 } from "@layoutlens/shared";
 import {
   readPngBuffer,
@@ -20,13 +20,19 @@ import {
   writeDiffPng,
 } from "@layoutlens/visual";
 
+function findBaselineEntry(manifest: BaselineManifest, width: number, height: number) {
+  const legacy = manifest.entries.find((e) => e.width === width && e.viewportHeight === undefined);
+  const exact = manifest.entries.find((e) => e.width === width && e.viewportHeight === height);
+  return exact ?? legacy;
+}
+
 export async function runVisualRegression(
   result: ScanResult,
   artifactsDirectory: string,
   baselineDirectory: string,
   artifactOptions?: ScanArtifactOptions,
 ): Promise<VisualRegressionResult> {
-  await readBaselineManifest(baselineDirectory);
+  const manifest = await readBaselineManifest(baselineDirectory);
   const fileConfig = await loadVisualConfigFromBaseline(baselineDirectory);
   const config = mergeVisualConfig(
     artifactOptions?.visualConfig ?? fileConfig,
@@ -34,27 +40,29 @@ export async function runVisualRegression(
 
   const comparisons: ViewportVisualComparison[] = [];
 
-  for (const width of VIEWPORT_WIDTHS) {
-    const label = getViewportLabel(width);
-    const viewport = result.viewports.find((v) => v.width === width);
+  for (const viewport of result.viewports) {
+    const width = viewport.width;
+    const height = viewport.viewportHeight;
+    const label = getViewportLabel(width, height);
     if (!viewport?.screenshot || viewport.inspectionStatus === "failed" || viewport.inspectionStatus === "skipped") {
       comparisons.push({
         width,
+        viewportHeight: height,
         label,
         status: "missing-baseline",
         diffPixels: 0,
         diffPixelRatio: 0,
         totalPixels: 0,
-        currentScreenshot: viewportScreenshotRelativePath(width),
+        currentScreenshot: viewportScreenshotRelativePath(width, height),
       });
       continue;
     }
     const actualRelative = viewport.screenshot;
     const actualAbs = join(artifactsDirectory, actualRelative);
-    const baselineAbs = join(
-      baselineDirectory,
-      baselineScreenshotPath(width),
-    );
+    const entry = findBaselineEntry(manifest, width, height);
+    const baselineAbs = entry
+      ? join(baselineDirectory, entry.relativePath)
+      : join(baselineDirectory, baselineScreenshotPath(width, height));
 
     let baselineScreenshot: string | undefined;
     let diffScreenshot: string | undefined;
@@ -65,6 +73,20 @@ export async function runVisualRegression(
     } catch {
       comparisons.push({
         width,
+        viewportHeight: height,
+        label,
+        status: "missing-baseline",
+        diffPixels: 0,
+        diffPixelRatio: 0,
+        totalPixels: 0,
+        currentScreenshot: actualRelative,
+      });
+      continue;
+    }
+    if (!entry) {
+      comparisons.push({
+        width,
+        viewportHeight: height,
         label,
         status: "missing-baseline",
         diffPixels: 0,
@@ -87,12 +109,14 @@ export async function runVisualRegression(
         artifactsDirectory,
         baselineDirectory,
         width,
+        height,
       );
       if (compare.diffBuffer) {
         const baselinePng = await readPngBuffer(baselineAbs);
         diffScreenshot = await writeDiffPng(
           artifactsDirectory,
           width,
+          height,
           compare.diffBuffer,
           Buffer.from(baselinePng.data),
           compare.widthPx,
@@ -103,6 +127,7 @@ export async function runVisualRegression(
 
     comparisons.push({
       width,
+      viewportHeight: height,
       label,
       status: compare.passed ? "pass" : "fail",
       diffPixels: compare.diffPixels,

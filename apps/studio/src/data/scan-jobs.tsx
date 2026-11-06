@@ -8,10 +8,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ScanJobView, ScanServiceInfo } from "@layoutlens/shared";
-import { scanApi as defaultApi, ScanApiError, ScanServiceUnavailableError, type ScanApi } from "../api/scan-api";
+import type { JsonSiteWideFinding, RetryScanRequestBody, ScanJobView, ScanServiceInfo } from "@layoutlens/shared";
+import {
+  scanApi as defaultApi,
+  ScanApiError,
+  ScanServiceUnavailableError,
+  type ScanApi,
+  type StartScanOptions,
+} from "../api/scan-api";
 import { navigate } from "../app/router";
-import { loadReportFromScan } from "./load-report";
+import { workspaceKeyForSiteWideFinding } from "../lib/workspace-findings";
+import { loadReportFromScan, loadSitePageReport } from "./load-report";
 import { useReports } from "./report-store";
 
 export type ServiceState =
@@ -27,9 +34,12 @@ interface ScanJobsValue {
   current: ScanJobView | null;
   /** A scan from this tab is being submitted, queued, or running. */
   busy: boolean;
-  startScan(url: string): Promise<ScanJobView>;
+  startScan(url: string, options?: StartScanOptions): Promise<ScanJobView>;
   cancelScan(id: string): Promise<void>;
+  retrySiteScan(id: string, body?: RetryScanRequestBody): Promise<void>;
   openResults(id: string, options?: { navigateTo?: "reports" | "visual" | null }): Promise<boolean>;
+  openSitePage(scanId: string, pageIndex: number): Promise<boolean>;
+  openSiteFinding(scanId: string, pageIndex: number, finding: JsonSiteWideFinding): Promise<boolean>;
   openingId: string | null;
   openError: string | null;
   checkService(): Promise<ServiceState>;
@@ -74,8 +84,9 @@ export function ScanJobsProvider({ children, api = defaultApi }: { children: Rea
   }, [checkService]);
 
   const anyActive = scans.some(isActive);
+  const retryActive = scans.some((s) => s.siteRetry?.state === "running");
   useEffect(() => {
-    if (service.status !== "available" || !anyActive) return;
+    if (service.status !== "available" || (!anyActive && !retryActive)) return;
     let cancelled = false;
     const timer = window.setInterval(async () => {
       try {
@@ -91,17 +102,17 @@ export function ScanJobsProvider({ children, api = defaultApi }: { children: Rea
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [api, service.status, anyActive]);
+  }, [api, service.status, anyActive, retryActive]);
 
   const startScan = useCallback(
-    async (url: string) => {
+    async (url: string, options?: StartScanOptions) => {
       setSubmitting(true);
       try {
         if (service.status !== "available") {
           const state = await checkService();
           if (state.status !== "available") throw new ScanServiceUnavailableError();
         }
-        const view = await api.startScan(url);
+        const view = await api.startScan(url, options);
         setCurrentId(view.id);
         setScans((prev) => [view, ...prev.filter((s) => s.id !== view.id)]);
         return view;
@@ -115,6 +126,14 @@ export function ScanJobsProvider({ children, api = defaultApi }: { children: Rea
   const cancelScan = useCallback(
     async (id: string) => {
       const view = await api.cancelScan(id);
+      setScans((prev) => prev.map((s) => (s.id === id ? view : s)));
+    },
+    [api],
+  );
+
+  const retrySiteScan = useCallback(
+    async (id: string, body?: RetryScanRequestBody) => {
+      const view = await api.retryScan(id, body);
       setScans((prev) => prev.map((s) => (s.id === id ? view : s)));
     },
     [api],
@@ -140,12 +159,55 @@ export function ScanJobsProvider({ children, api = defaultApi }: { children: Rea
     [api, addReport],
   );
 
+  const openSitePage = useCallback(
+    async (scanId: string, pageIndex: number) => {
+      setOpeningId(scanId);
+      setOpenError(null);
+      try {
+        const raw = await api.getPageReport(scanId, pageIndex);
+        addReport(loadSitePageReport(raw, scanId, pageIndex));
+        navigate("reports");
+        return true;
+      } catch (e) {
+        setOpenError(e instanceof Error ? e.message : "The page report could not be loaded.");
+        return false;
+      } finally {
+        setOpeningId(null);
+      }
+    },
+    [api, addReport],
+  );
+
+  const openSiteFinding = useCallback(
+    async (scanId: string, pageIndex: number, finding: JsonSiteWideFinding) => {
+      setOpeningId(scanId);
+      setOpenError(null);
+      try {
+        const raw = await api.getPageReport(scanId, pageIndex);
+        const base = loadSitePageReport(raw, scanId, pageIndex);
+        const key = workspaceKeyForSiteWideFinding(base.report, finding);
+        addReport(
+          key ? { ...base, initialFocus: { viewportWidth: finding.viewportWidth, findingKey: key } } : base,
+        );
+        navigate("reports");
+        return true;
+      } catch (e) {
+        setOpenError(e instanceof Error ? e.message : "The page report could not be loaded.");
+        return false;
+      } finally {
+        setOpeningId(null);
+      }
+    },
+    [api, addReport],
+  );
+
   const current = scans.find((s) => s.id === currentId) ?? null;
 
   useEffect(() => {
     if (current?.state === "completed" && !autoOpened.current.has(current.id)) {
       autoOpened.current.add(current.id);
-      void openResults(current.id, { navigateTo: null });
+      const navigateTo = current.scanMode === "multi_page" ? "reports" : null;
+      void openResults(current.id, { navigateTo });
     }
   }, [current, openResults]);
 
@@ -157,12 +219,29 @@ export function ScanJobsProvider({ children, api = defaultApi }: { children: Rea
       busy: submitting || isActive(current),
       startScan,
       cancelScan,
+      retrySiteScan,
       openResults,
+      openSitePage,
+      openSiteFinding,
       openingId,
       openError,
       checkService,
     }),
-    [service, scans, current, submitting, startScan, cancelScan, openResults, openingId, openError, checkService],
+    [
+      service,
+      scans,
+      current,
+      submitting,
+      startScan,
+      cancelScan,
+      retrySiteScan,
+      openResults,
+      openSitePage,
+      openSiteFinding,
+      openingId,
+      openError,
+      checkService,
+    ],
   );
 
   return <ScanJobsContext.Provider value={value}>{children}</ScanJobsContext.Provider>;

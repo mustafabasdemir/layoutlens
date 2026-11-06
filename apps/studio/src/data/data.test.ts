@@ -9,7 +9,7 @@ import {
   recordHistory,
   type KeyValueStorage,
 } from "./history";
-import { indexFiles, loadReportFromScan, lookupAsset } from "./load-report";
+import { indexFiles, loadReportFromScan, loadSitePageReport, lookupAsset } from "./load-report";
 import { normalizeAssetPath, parseLayoutLensReport, ReportValidationError } from "./report-validate";
 
 const validReport = {
@@ -293,5 +293,15 @@ describe("loadReportFromScan", () => {
 
   it("rejects invalid payloads from the service", () => {
     expect(() => loadReportFromScan("0b5c2a6e-1d1e-4f1a-9c3b-2f9a7d0e1a11", { tool: "x" })).toThrow(ReportValidationError);
+  });
+});
+
+describe("loadSitePageReport", () => {
+  it("prefixes per-page asset paths for the API file endpoint", () => {
+    const loaded = loadSitePageReport(validReport, "0b5c2a6e-1d1e-4f1a-9c3b-2f9a7d0e1a11", 3);
+    expect(loaded.resolveAsset("screenshots/viewport-390.png")).toBe(
+      "/api/scans/0b5c2a6e-1d1e-4f1a-9c3b-2f9a7d0e1a11/files/pages/3/screenshots/viewport-390.png",
+    );
+    expect(loaded.resolveAsset("../scan.json")).toBeNull();
   });
 });

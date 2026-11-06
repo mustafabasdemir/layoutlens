@@ -2,6 +2,7 @@ import {
   SCAN_API_PREFIX,
   SCAN_API_SERVICE,
   type CreateScanRequestBody,
+  type RetryScanRequestBody,
   type ScanJobView,
   type ScanListResponse,
   type ScanServiceInfo,
@@ -32,13 +33,22 @@ export class ScanServiceUnavailableError extends ScanApiError {
   }
 }
 
+export interface StartScanOptions {
+  mode?: "single_page" | "multi_page";
+  maxPages?: number;
+  maxDepth?: number;
+  viewports?: readonly { width: number; height: number; label?: string }[];
+}
+
 export interface ScanApi {
   health(): Promise<ScanServiceInfo>;
-  startScan(url: string): Promise<ScanJobView>;
+  startScan(url: string, options?: StartScanOptions): Promise<ScanJobView>;
   getScan(id: string): Promise<ScanJobView>;
   listScans(): Promise<ScanJobView[]>;
   getResults(id: string): Promise<unknown>;
+  getPageReport(scanId: string, pageIndex: number): Promise<unknown>;
   cancelScan(id: string): Promise<ScanJobView>;
+  retryScan(id: string, body?: RetryScanRequestBody): Promise<ScanJobView>;
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -87,8 +97,8 @@ export function createScanApi(fetchImpl: FetchLike = (input, init) => fetch(inpu
       if (!isRecord(info) || info.service !== SCAN_API_SERVICE) throw new ScanServiceUnavailableError();
       return info;
     },
-    startScan(url) {
-      const body: CreateScanRequestBody = { url };
+    startScan(url, options) {
+      const body: CreateScanRequestBody = { url, ...options };
       return request<ScanJobView>("/scans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -101,7 +111,15 @@ export function createScanApi(fetchImpl: FetchLike = (input, init) => fetch(inpu
       return Array.isArray(res.scans) ? res.scans : [];
     },
     getResults: (scanId) => request<unknown>(`/scans/${id(scanId)}/results`),
+    getPageReport: (scanId, pageIndex) =>
+      request<unknown>(`/scans/${id(scanId)}/pages/${encodeURIComponent(String(pageIndex))}/report`),
     cancelScan: (scanId) => request<ScanJobView>(`/scans/${id(scanId)}/cancel`, { method: "POST" }),
+    retryScan: (scanId, body) =>
+      request<ScanJobView>(`/scans/${id(scanId)}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      }),
   };
 }
 

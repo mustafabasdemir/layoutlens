@@ -16,7 +16,7 @@ import {
   type KeyValueStorage,
   type ReportHistoryEntry,
 } from "./history";
-import { loadReportFromFiles, type LoadedReport } from "./load-report";
+import { isSiteScanEnvelope, loadReportFromFiles, type LoadedReport } from "./load-report";
 
 interface ReportStoreValue {
   /** Reports opened in this browser session (screenshots available). */
@@ -65,7 +65,7 @@ export function ReportStoreProvider({ children }: { children: ReactNode }) {
     });
     setActiveId(loaded.id);
     setError(null);
-    if (storage.current && !loaded.scanId) {
+    if (storage.current && !loaded.scanId && !isSiteScanEnvelope(loaded.report)) {
       setHistory(
         recordHistory(
           storage.current,

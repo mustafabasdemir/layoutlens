@@ -1,24 +1,58 @@
-import { SCAN_FILE_PATTERN, scanFileUrl, type JsonReport } from "@layoutlens/shared";
-import { normalizeAssetPath, parseLayoutLensReport, ReportValidationError } from "./report-validate";
+import {
+  SCAN_API_PREFIX,
+  SCAN_FILE_PATTERN,
+  scanFileUrl,
+  type JsonReport,
+  type JsonSiteScanReport,
+} from "@layoutlens/shared";
+import {
+  normalizeAssetPath,
+  parseLayoutLensReport,
+  parseStudioScanResult,
+  ReportValidationError,
+} from "./report-validate";
 
-export interface LoadedReport {
+export interface LoadedReportBase {
   id: string;
   /** Folder name the user selected (from the browser file picker). */
   sourceName: string;
   /** Set when the report came from the local scanning service. */
   scanId?: string;
+  /** Scan job id from the API (always set for service-backed reports). */
+  scanJobId?: string;
   loadedAt: string;
-  report: JsonReport;
   /** Resolve a report-relative asset (e.g. `screenshots/viewport-390.png`) to a local object URL. */
   resolveAsset(path: string | undefined): string | null;
   dispose(): void;
 }
+
+/** Per-page `JsonReport` (Inspector, findings, screenshots). */
+export interface LoadedPageReport extends LoadedReportBase {
+  report: JsonReport;
+  /** One-shot selection when opening from a site-wide finding link. */
+  initialFocus?: { viewportWidth: number; findingKey: string };
+}
+
+/** Site-wide envelope (`tool: layoutlens-site`). */
+export interface LoadedSiteScanReport extends LoadedReportBase {
+  report: JsonSiteScanReport;
+}
+
+export type LoadedReport = LoadedPageReport | LoadedSiteScanReport;
 
 export interface LocalFileLike {
   name: string;
   /** Path relative to the selected folder root, including the folder name. */
   webkitRelativePath?: string;
   text(): Promise<string>;
+}
+
+export function isSiteScanEnvelope(r: JsonReport | JsonSiteScanReport): r is JsonSiteScanReport {
+  return (r as JsonSiteScanReport).tool === "layoutlens-site";
+}
+
+export function isLoadedSiteScan(loaded: LoadedReport): loaded is LoadedSiteScanReport {
+  return isSiteScanEnvelope(loaded.report);
 }
 
 export function reportIdFor(report: JsonReport): string {
@@ -66,28 +100,106 @@ export function folderNameOf(files: readonly LocalFileLike[]): string {
   return "Selected files";
 }
 
+function makeResolveAssetFromScan(scanId: string, assetPathPrefix = ""): (path: string | undefined) => string | null {
+  const prefix = assetPathPrefix.replace(/\/+$/, "");
+  return (path) => {
+    const normalized = path ? normalizeAssetPath(path) : null;
+    if (!normalized || !SCAN_FILE_PATTERN.test(normalized)) return null;
+    const relative = prefix ? `${prefix}/${normalized}` : normalized;
+    return SCAN_FILE_PATTERN.test(relative) ? scanFileUrl(scanId, relative) : null;
+  };
+}
+
+/** Build a LoadedReport from per-page JSON (already fetched). */
+export function loadSitePageReport(
+  raw: unknown,
+  scanId: string,
+  pageIndex: number,
+  initialFocus?: { viewportWidth: number; findingKey: string },
+): LoadedPageReport {
+  const report = parseLayoutLensReport(raw);
+  return {
+    id: `page:${scanId}:${pageIndex}:${report.scannedAt}`,
+    sourceName: `Page ${pageIndex + 1} · scan ${scanId.slice(0, 8)}`,
+    scanId,
+    scanJobId: scanId,
+    ...(initialFocus ? { initialFocus } : {}),
+    loadedAt: new Date().toISOString(),
+    report,
+    resolveAsset: makeResolveAssetFromScan(scanId, `pages/${pageIndex}/`),
+    dispose() {},
+  };
+}
+
+/** Fetch a per-page `report.json` from a completed multi-page scan. */
+export async function loadSitePageFromScan(
+  scanId: string,
+  pageIndex: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LoadedPageReport> {
+  const res = await fetchImpl(`${SCAN_API_PREFIX}/scans/${encodeURIComponent(scanId)}/pages/${pageIndex}/report`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  const isJson = (res.headers.get("content-type") ?? "").includes("application/json");
+  if (!res.ok || !isJson) {
+    throw new ReportValidationError(
+      res.status === 404
+        ? "That page report is not available (index out of range or scan incomplete)."
+        : "The page report could not be loaded.",
+    );
+  }
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    throw new ReportValidationError("The page report response is not valid JSON.");
+  }
+  return loadSitePageReport(body, scanId, pageIndex);
+}
+
 /**
  * Wrap a report produced by the local scanning service. Assets resolve to the API's
  * whitelisted file endpoint; anything else resolves to nothing.
  */
-export function loadReportFromScan(scanId: string, raw: unknown, loadedAt = new Date().toISOString()): LoadedReport {
-  const report = parseLayoutLensReport(raw);
+export function loadReportFromScan(
+  scanId: string,
+  raw: unknown,
+  loadedAt = new Date().toISOString(),
+): LoadedPageReport | LoadedSiteScanReport {
+  const parsed = parseStudioScanResult(raw);
+  const resolveAsset = makeResolveAssetFromScan(scanId);
+
+  if (!isSiteScanEnvelope(parsed)) {
+    const report = parsed;
+    return {
+      id: reportIdFor(report),
+      sourceName: `Studio scan ${scanId.slice(0, 8)}`,
+      scanId,
+      scanJobId: scanId,
+      loadedAt,
+      report,
+      resolveAsset,
+      dispose() {},
+    };
+  }
+
+  const site = parsed;
   return {
-    id: reportIdFor(report),
-    sourceName: `Studio scan ${scanId.slice(0, 8)}`,
+    id: `site:${scanId}:${site.scannedAt}`,
+    sourceName: `Site scan ${scanId.slice(0, 8)}`,
     scanId,
+    scanJobId: scanId,
     loadedAt,
-    report,
-    resolveAsset(path) {
-      const normalized = path ? normalizeAssetPath(path) : null;
-      return normalized && SCAN_FILE_PATTERN.test(normalized) ? scanFileUrl(scanId, normalized) : null;
-    },
+    report: site,
+    resolveAsset,
     dispose() {},
   };
 }
 
 /** Load a CLI report bundle (index.html, report.json, screenshots/, visual/) from local files. */
-export async function loadReportFromFiles(files: readonly File[]): Promise<LoadedReport> {
+export async function loadReportFromFiles(files: readonly File[]): Promise<LoadedPageReport> {
   const index = indexFiles(files);
   const jsonFile = index.get("report.json");
   if (!jsonFile) {

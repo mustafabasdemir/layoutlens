@@ -48,7 +48,7 @@ describe("scanUrl integration", () => {
       });
 
       for (const vp of result.viewports) {
-        expect(vp.screenshot).toBe(viewportScreenshotRelativePath(vp.width));
+        expect(vp.screenshot).toBe(viewportScreenshotRelativePath(vp.width, vp.viewportHeight));
         await access(join(dir, vp.screenshot!));
       }
     },

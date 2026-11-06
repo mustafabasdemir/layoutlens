@@ -1,18 +1,34 @@
-/** Standard viewports for responsive layout checks (mobile, tablet, desktop). */
-export const VIEWPORT_WIDTHS = [390, 768, 1440] as const;
+import {
+  DEFAULT_VIEWPORT_SPECS,
+  VIEWPORT_WIDTHS,
+  type ViewportSpec,
+  type ViewportWidth,
+  mergeViewportSpecs,
+  viewportLabelForDimensions,
+} from "./viewport-presets.js";
 
-export type ViewportWidth = (typeof VIEWPORT_WIDTHS)[number];
+export {
+  DEFAULT_VIEWPORT_SPECS,
+  VIEWPORT_WIDTHS,
+  mergeViewportSpecs,
+  getViewportLabel,
+  viewportLabelForDimensions,
+  viewportArtifactBasename,
+  type ViewportSpec,
+  type ViewportWidth,
+} from "./viewport-presets.js";
 
 export interface ViewportLabel {
-  width: ViewportWidth;
+  width: number;
   label: string;
+  height?: number;
 }
 
-export const VIEWPORT_LABELS: readonly ViewportLabel[] = [
-  { width: 390, label: "mobile" },
-  { width: 768, label: "tablet" },
-  { width: 1440, label: "desktop" },
-] as const;
+export const VIEWPORT_LABELS: readonly ViewportLabel[] = DEFAULT_VIEWPORT_SPECS.map((s) => ({
+  width: s.width,
+  label: s.label,
+  height: s.height,
+}));
 
 export type FindingSeverity = "high" | "medium" | "low";
 
@@ -130,6 +146,7 @@ export interface ScanSummary {
   scanCompletionStatus?: "full" | "partial" | "failed";
   viewportOutcomes?: readonly {
     width: ViewportWidth;
+    height?: number;
     label: string;
     status: import("./scan-diagnostics.js").ViewportInspectionStatus;
     message?: string;
@@ -153,7 +170,15 @@ export interface ScanResult {
 
 export interface ScanOptions {
   url: string;
-  /** Default viewport height for all widths. */
+  /**
+   * Viewport dimensions for this run (width × height per row). When omitted, presets are
+   * mobile/tablet/desktop (390×844, 768×1024, 1440×900).
+   */
+  viewports?: readonly ViewportSpec[];
+  /**
+   * Default height when `viewports` is omitted or uses width-only legacy shape.
+   * @deprecated Prefer `viewports` with explicit heights.
+   */
   viewportHeight?: number;
   headless?: boolean;
   /** When set, captures per-viewport PNG screenshots under `directory/screenshots/`. */
@@ -171,22 +196,63 @@ export interface ScanOptions {
   inspector?: Partial<import("./inspector.js").InspectorCaptureOptions>;
   /** Phase 9.2.1 — navigation, readiness, screenshot timeouts (defaults are conservative). */
   timeouts?: import("./scan-timeouts.js").ScanTimeoutOptions;
+  /**
+   * Phase 10.3 — merge with a previous `ScanResult` (typically from disk). Matching viewports with
+   * `inspectionStatus === "completed"` are reused; others are scanned. Preserves successful work.
+   */
+  mergePartialScan?: ScanResult;
+  /**
+   * Zero-based indices into the resolved viewport list (`viewports` option or defaults).
+   * When set with `mergePartialScan`, only these indices are re-measured; others are copied from the merge baseline.
+   */
+  retryViewportIndices?: readonly number[];
 }
 
 export type ScanProgressEvent =
   | { type: "browser-launched" }
-  | { type: "viewport-started"; width: ViewportWidth; index: number; total: number }
+  | {
+      type: "viewport-started";
+      width: ViewportWidth;
+      height?: number;
+      index: number;
+      total: number;
+      /** Page URL when scanning multiple pages in one job. */
+      url?: string;
+      pageIndex?: number;
+      pageTotal?: number;
+    }
   | {
       type: "viewport-completed";
       width: ViewportWidth;
+      height?: number;
       index: number;
       total: number;
       findingCount: number;
       status: import("./scan-diagnostics.js").ViewportInspectionStatus;
       message?: string;
+      url?: string;
+      pageIndex?: number;
+      pageTotal?: number;
     }
-  | { type: "visual-compare-started" }
-  | { type: "visual-compare-completed"; failedCount: number };
+  | { type: "visual-compare-started"; url?: string; pageIndex?: number; pageTotal?: number }
+  | { type: "visual-compare-completed"; failedCount: number; url?: string; pageIndex?: number; pageTotal?: number }
+  | {
+      type: "site-scan-progress";
+      rootUrl: string;
+      discoveredPages: number;
+      scheduledPages: number;
+      completedPages: number;
+      failedPages: number;
+      /** Finished viewport inspections so far (while `phase === "scanning"`). */
+      viewportTasksCompleted?: number;
+      /** Upper bound: `scheduledPages` × viewports per page once discovery finishes. */
+      viewportTasksTotal?: number;
+      currentUrl?: string;
+      currentViewport?: { width: number; height: number; label: string; index: number; total: number };
+      phase: "discovering" | "scanning" | "writing" | "done";
+    }
+  | { type: "page-scan-started"; url: string; index: number; total: number }
+  | { type: "page-scan-completed"; url: string; index: number; total: number; success: boolean; error?: string };
 
 export interface ScanArtifactOptions {
   directory: string;
@@ -195,11 +261,6 @@ export interface ScanArtifactOptions {
   visualConfig?: import("./visual.js").VisualRegressionConfig;
   /** Write diff PNGs under `directory/visual/`. */
   visualDiffs?: boolean;
-}
-
-export function getViewportLabel(width: ViewportWidth): string {
-  const found = VIEWPORT_LABELS.find((v) => v.width === width);
-  return found?.label ?? `${width}px`;
 }
 
 export {
@@ -227,6 +288,7 @@ export {
 export type { SeverityCounts } from "./severity.js";
 export {
   REPORT_SCHEMA_VERSION,
+  REPORT_SCHEMA_VERSION_1_4,
   type JsonReport,
   type JsonReportSchemaVersion,
   type JsonReportAdvancedFinding,
@@ -255,6 +317,9 @@ export type {
   JsonReportVisualCompare,
   JsonReportVisualCompareView,
   JsonReportVisualSummary,
+  JsonSiteScanReport,
+  JsonSiteWideFinding,
+  StudioJsonReportPayload,
 } from "./report.js";
 export {
   DARK_PALETTE,
@@ -324,10 +389,13 @@ export {
   type ScanJobBaseline,
   type ScanJobProgress,
   type ScanJobState,
+  type RetryScanRequestBody,
   type ScanJobView,
   type ScanListResponse,
   type ScanServiceInfo,
   type ScanServiceLimits,
+  type SiteScanRetryTaskView,
+  type SiteScanRetryView,
 } from "./scan-api.js";
 export {
   ADVANCED_CATEGORY_LABELS,
@@ -364,3 +432,13 @@ export {
   screenshotEvidenceNote,
   type FindingKind,
 } from "./finding-insights.js";
+export {
+  SITE_SCAN_SCHEMA_VERSION,
+  mergeSiteScanScope,
+  SITE_SCAN_SCOPE_BOUNDS,
+  type SiteScanAggregateReport,
+  type SiteScanMode,
+  type SiteScanPageSummary,
+  type SiteScanQueryParamPolicy,
+  type SiteScanScope,
+} from "./site-scan/schema.js";

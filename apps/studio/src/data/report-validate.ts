@@ -3,8 +3,10 @@ import {
   EXCLUSION_LABELS,
   INSPECTOR_COMPUTED_STYLE_KEYS,
   INSPECTOR_SNAPSHOT_VERSION,
+  mergeSiteScanScope,
   navigationQuality,
   REPORT_SCHEMA_VERSION,
+  REPORT_SCHEMA_VERSION_1_4,
   type ClippingContext,
   type ExcludedFinding,
   type ExclusionReason,
@@ -18,6 +20,10 @@ import {
   type JsonReportFinding,
   type JsonReportViewport,
   type JsonReportVisualCompare,
+  type JsonReportVisualCompareView,
+  type JsonReportVisualSummary,
+  type JsonSiteScanReport,
+  type JsonSiteWideFinding,
   type RelatedElement,
   type ViewportAnalysis,
   type AdvancedViewportAnalysis,
@@ -26,6 +32,7 @@ import {
   type NavigationQuality,
   type ScanNavigation,
   type ScanNavigationDiagnostics,
+  type SiteScanScope,
 } from "@layoutlens/shared";
 
 const EXCLUSION_REASONS = Object.keys(EXCLUSION_LABELS) as ExclusionReason[];
@@ -120,6 +127,8 @@ function parseNavigationDiagnostics(raw: unknown, path: string): ScanNavigationD
     firstEffectiveMilestone: milestone as ScanNavigationDiagnostics["firstEffectiveMilestone"],
     firstPartialReadinessRecovery: raw.firstPartialReadinessRecovery === true,
   };
+  const fvh = optionalNum(raw.firstViewportHeight);
+  if (fvh !== undefined) out.firstViewportHeight = fvh;
   const fr = optionalStr(raw.firstReadinessNote);
   if (fr !== undefined) out.firstReadinessNote = fr.slice(0, 200);
   return out;
@@ -538,6 +547,8 @@ function parseViewport(raw: unknown, index: number): JsonReportViewport {
     overflowPx: num(raw.overflowPx, `${path}.overflowPx`),
     findings: raw.findings.map((f, i) => parseFinding(f, `${path}.findings[${i}]`)),
   };
+  const vdk = optionalStr(raw.viewportDimensionsKey);
+  if (vdk !== undefined) vp.viewportDimensionsKey = vdk;
   if (typeof raw.inspectionStatus === "string" && (VIEWPORT_INSPECTION_STATUSES as readonly string[]).includes(raw.inspectionStatus)) {
     vp.inspectionStatus = raw.inspectionStatus as JsonReportViewport["inspectionStatus"];
   }
@@ -564,6 +575,194 @@ function parseViewport(raw: unknown, index: number): JsonReportViewport {
   return vp;
 }
 
+function parseVisualCompareView(raw: unknown, path: string): JsonReportVisualCompareView {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const base = parseVisual(raw, path);
+  if (!base) throw new ReportValidationError(`${path} must include compare fields.`);
+  const out: JsonReportVisualCompareView = {
+    width: num(raw.width, `${path}.width`),
+    label: str(raw.label, `${path}.label`),
+    ...base,
+  };
+  const cur = optionalStr(raw.currentScreenshot);
+  if (cur) out.currentScreenshot = cur;
+  const vph = optionalNum(raw.viewportHeight);
+  if (vph !== undefined) out.viewportHeight = vph;
+  return out;
+}
+
+function parseVisualSummary(raw: unknown, path: string): JsonReportVisualSummary | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const comps = raw.comparisons;
+  if (!Array.isArray(comps)) throw new ReportValidationError(`${path}.comparisons must be an array.`);
+  return {
+    passedCount: num(raw.passedCount, `${path}.passedCount`),
+    failedCount: num(raw.failedCount, `${path}.failedCount`),
+    comparisons: comps.map((c, i) => parseVisualCompareView(c, `${path}.comparisons[${i}]`)),
+  };
+}
+
+const SITE_SCAN_STATES = ["completed", "cancelled", "partial"] as const;
+const SITE_PAGE_STATUSES = ["completed", "failed", "skipped"] as const;
+
+function parseSiteWideFinding(raw: unknown, path: string): JsonSiteWideFinding {
+  if (!isObject(raw)) throw new ReportValidationError(`${path} must be an object.`);
+  const kind = raw.kind;
+  if (kind !== "overflow" && kind !== "advanced") {
+    throw new ReportValidationError(`${path}.kind is invalid.`);
+  }
+  const classification = raw.classification;
+  return {
+    id: str(raw.id, `${path}.id`),
+    pageUrl: str(raw.pageUrl, `${path}.pageUrl`).slice(0, 2000),
+    pageIndex: num(raw.pageIndex, `${path}.pageIndex`),
+    viewportWidth: num(raw.viewportWidth, `${path}.viewportWidth`),
+    viewportHeight: num(raw.viewportHeight, `${path}.viewportHeight`),
+    viewportLabel: str(raw.viewportLabel, `${path}.viewportLabel`).slice(0, 80),
+    kind,
+    issueType: str(raw.issueType, `${path}.issueType`).slice(0, 120),
+    severity: (typeof raw.severity === "string" && SEVERITIES.includes(raw.severity as FindingSeverity)
+      ? raw.severity
+      : (() => {
+          throw new ReportValidationError(`${path}.severity is invalid.`);
+        })()) as FindingSeverity,
+    findingId: str(raw.findingId, `${path}.findingId`).slice(0, 500),
+    selector: str(raw.selector, `${path}.selector`).slice(0, 2000),
+    title: str(raw.title, `${path}.title`).slice(0, 200),
+    ...(typeof classification === "string" &&
+    (FINDING_CLASSIFICATIONS as readonly string[]).includes(classification)
+      ? { classification: classification as FindingClassification }
+      : {}),
+  };
+}
+
+/** Multi-page site scan envelope (`tool: layoutlens-site`). */
+export function parseJsonSiteScanReport(input: unknown): JsonSiteScanReport {
+  if (!isObject(input)) throw new ReportValidationError("Report must be a JSON object.");
+  if (input.tool !== "layoutlens-site") {
+    throw new ReportValidationError('Not a site scan report (expected tool: "layoutlens-site").');
+  }
+  if (input.schemaVersion !== REPORT_SCHEMA_VERSION_1_4) {
+    throw new ReportValidationError(`Unsupported site scan schema version: ${String(input.schemaVersion)}.`);
+  }
+  const state = input.state;
+  if (typeof state !== "string" || !(SITE_SCAN_STATES as readonly string[]).includes(state)) {
+    throw new ReportValidationError("site scan state is invalid.");
+  }
+  const rootUrl = str(input.rootUrl, "rootUrl").slice(0, 2000);
+  const scannedAt = str(input.scannedAt, "scannedAt");
+
+  const scopeRaw = input.scope;
+  if (!isObject(scopeRaw)) throw new ReportValidationError("scope must be an object.");
+  const partialScope: Partial<SiteScanScope> = {
+    ...(typeof scopeRaw.maxPages === "number" ? { maxPages: scopeRaw.maxPages } : {}),
+    ...(typeof scopeRaw.maxDepth === "number" ? { maxDepth: scopeRaw.maxDepth } : {}),
+    ...(typeof scopeRaw.concurrency === "number" ? { concurrency: scopeRaw.concurrency } : {}),
+    ...(typeof scopeRaw.maxRedirectHops === "number" ? { maxRedirectHops: scopeRaw.maxRedirectHops } : {}),
+    ...(typeof scopeRaw.queryParamPolicy === "string"
+      ? {
+          queryParamPolicy: scopeRaw.queryParamPolicy as SiteScanScope["queryParamPolicy"],
+        }
+      : {}),
+  };
+  const scope = mergeSiteScanScope(partialScope);
+
+  if (!Array.isArray(input.viewports)) throw new ReportValidationError("viewports must be an array.");
+  const viewports = input.viewports.map((v, i) => {
+    const p = `viewports[${i}]`;
+    if (!isObject(v)) throw new ReportValidationError(`${p} must be an object.`);
+    return {
+      width: num(v.width, `${p}.width`),
+      height: num(v.height, `${p}.height`),
+      label: str(v.label, `${p}.label`).slice(0, 40),
+    };
+  });
+
+  const sum = input.summary;
+  if (!isObject(sum)) throw new ReportValidationError("summary must be an object.");
+
+  const pagesRaw = input.pages;
+  if (!Array.isArray(pagesRaw)) throw new ReportValidationError("pages must be an array.");
+  const pages = pagesRaw.map((row, i) => {
+    const p = `pages[${i}]`;
+    if (!isObject(row)) throw new ReportValidationError(`${p} must be an object.`);
+    const st = str(row.status, `${p}.status`);
+    if (!(SITE_PAGE_STATUSES as readonly string[]).includes(st)) {
+      throw new ReportValidationError(`${p}.status is invalid.`);
+    }
+    const base: JsonSiteScanReport["pages"][number] = {
+      url: str(row.url, `${p}.url`).slice(0, 2000),
+      path: str(row.path, `${p}.path`).slice(0, 200),
+      status: st as JsonSiteScanReport["pages"][number]["status"],
+    };
+    const err = optionalStr(row.error);
+    if (err !== undefined) base.error = err.slice(0, 500);
+    const ic = optionalNum(row.issueCount);
+    if (ic !== undefined) base.issueCount = ic;
+    const vw = optionalNum(row.viewportsWithLayoutIssues);
+    if (vw !== undefined) base.viewportsWithLayoutIssues = vw;
+    const cf = optionalNum(row.confirmedLayoutFindings);
+    if (cf !== undefined) base.confirmedLayoutFindings = cf;
+    const pf = optionalNum(row.potentialLayoutFindings);
+    if (pf !== undefined) base.potentialLayoutFindings = pf;
+    const fc = optionalNum(row.findingCount);
+    if (fc !== undefined) base.findingCount = fc;
+    const afc = optionalNum(row.advancedFindingCount);
+    if (afc !== undefined) base.advancedFindingCount = afc;
+    const prev = optionalStr(row.previewScreenshot);
+    if (prev !== undefined) base.previewScreenshot = prev;
+    const trust = row.scanTrust;
+    if (typeof trust === "string" && (NAVIGATION_QUALITIES as readonly string[]).includes(trust)) {
+      base.scanTrust = trust as import("@layoutlens/shared").NavigationQuality;
+    }
+    const scs = row.scanCompletionStatus;
+    if (typeof scs === "string" && (SCAN_COMPLETION_STATUSES as readonly string[]).includes(scs)) {
+      base.scanCompletionStatus = scs as NonNullable<
+        JsonSiteScanReport["pages"][number]["scanCompletionStatus"]
+      >;
+    }
+    return base;
+  });
+
+  const findingsRaw = input.siteWideFindings;
+  if (!Array.isArray(findingsRaw)) throw new ReportValidationError("siteWideFindings must be an array.");
+  const siteWideFindings = findingsRaw.map((f, i) => parseSiteWideFinding(f, `siteWideFindings[${i}]`));
+
+  const worst = sum.scanTrustWorst;
+  return {
+    schemaVersion: REPORT_SCHEMA_VERSION_1_4,
+    tool: "layoutlens-site",
+    rootUrl,
+    scannedAt,
+    state: state as JsonSiteScanReport["state"],
+    scope,
+    viewports,
+    summary: {
+      totalPages: num(sum.totalPages, "summary.totalPages"),
+      completedPages: num(sum.completedPages, "summary.completedPages"),
+      failedPages: num(sum.failedPages, "summary.failedPages"),
+      skippedPages: num(sum.skippedPages, "summary.skippedPages"),
+      totalViewportsCompleted: num(sum.totalViewportsCompleted, "summary.totalViewportsCompleted"),
+      confirmedLayoutIssues: num(sum.confirmedLayoutIssues, "summary.confirmedLayoutIssues"),
+      potentialFindings: num(sum.potentialFindings, "summary.potentialFindings"),
+      responsiveAdvisories: num(sum.responsiveAdvisories, "summary.responsiveAdvisories"),
+      ...(typeof worst === "string" && (NAVIGATION_QUALITIES as readonly string[]).includes(worst)
+        ? { scanTrustWorst: worst as import("@layoutlens/shared").NavigationQuality }
+        : {}),
+    },
+    pages,
+    siteWideFindings,
+  };
+}
+
+/** Single-page `JsonReport` or multi-page `JsonSiteScanReport` from the scan API. */
+export function parseStudioScanResult(input: unknown): JsonReport | JsonSiteScanReport {
+  if (!isObject(input)) throw new ReportValidationError("Report must be a JSON object.");
+  if (input.tool === "layoutlens-site") return parseJsonSiteScanReport(input);
+  return parseLayoutLensReport(input);
+}
+
 /** Validate an untrusted `report.json` payload produced by the LayoutLens CLI. */
 export function parseLayoutLensReport(input: unknown): JsonReport {
   if (!isObject(input)) throw new ReportValidationError("Report must be a JSON object.");
@@ -571,7 +770,14 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
     throw new ReportValidationError('Not a LayoutLens report (missing tool: "layoutlens").');
   }
   const sv = input.schemaVersion;
-  if (sv !== "1.0" && sv !== "1.1" && sv !== "1.2" && sv !== "1.3" && sv !== REPORT_SCHEMA_VERSION) {
+  if (
+    sv !== "1.0" &&
+    sv !== "1.1" &&
+    sv !== "1.2" &&
+    sv !== "1.3" &&
+    sv !== REPORT_SCHEMA_VERSION &&
+    sv !== REPORT_SCHEMA_VERSION_1_4
+  ) {
     throw new ReportValidationError(
       `Unsupported report schema version: ${String(input.schemaVersion)}.`,
     );
@@ -592,7 +798,9 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
           ? "1.2"
           : input.schemaVersion === "1.3"
             ? "1.3"
-            : REPORT_SCHEMA_VERSION;
+            : input.schemaVersion === REPORT_SCHEMA_VERSION_1_4
+              ? REPORT_SCHEMA_VERSION_1_4
+              : REPORT_SCHEMA_VERSION;
   const report: JsonReport = {
     schemaVersion,
     tool: "layoutlens",
@@ -609,6 +817,8 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
     },
     viewports: input.viewports.map(parseViewport),
   };
+  const topVisual = parseVisualSummary(input.visual, "visual");
+  if (topVisual) report.visual = topVisual;
   if (typeof summary.visualFailures === "number") {
     report.summary.visualFailures = summary.visualFailures;
   }
@@ -657,6 +867,8 @@ export function parseLayoutLensReport(input: unknown): JsonReport {
         label: str(vo.label, `${p}.label`),
         status: st as NonNullable<JsonReport["summary"]["viewportOutcomes"]>[number]["status"],
       };
+      const vh = optionalNum(vo.height);
+      if (vh !== undefined) row.height = vh;
       const om = optionalStr(vo.message);
       if (om !== undefined) row.message = om.slice(0, 500);
       return row;

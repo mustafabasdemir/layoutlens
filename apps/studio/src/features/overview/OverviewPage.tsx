@@ -1,5 +1,7 @@
 import { AlertOctagon, FileText, Layers, MonitorSmartphone, ScanSearch } from "lucide-react";
+import type { JsonReport } from "@layoutlens/shared";
 import { hrefFor, navigate } from "../../app/router";
+import { isSiteScanEnvelope } from "../../data/load-report";
 import { useReports } from "../../data/report-store";
 import type { ReportHistoryEntry } from "../../data/history";
 import { displayUrl, formatCount, formatDateTime } from "../../lib/format";
@@ -27,7 +29,65 @@ function SummaryCards() {
       </Card>
     );
   }
-  const { report } = active;
+  if (isSiteScanEnvelope(active.report)) {
+    const site = active.report;
+    const sum = site.summary;
+    const items = [
+      {
+        label: "Pages completed",
+        value: `${sum.completedPages}/${sum.totalPages}`,
+        hint: `${sum.failedPages} failed`,
+        icon: FileText,
+        tone: sum.failedPages > 0 ? "warning" : "success",
+      },
+      {
+        label: "Viewports inspected",
+        value: formatCount(sum.totalViewportsCompleted),
+        hint: site.viewports.map((v) => `${v.width}×${v.height}`).join(" · "),
+        icon: MonitorSmartphone,
+        tone: "neutral",
+      },
+      {
+        label: "Confirmed layout (overflow)",
+        value: formatCount(sum.confirmedLayoutIssues),
+        hint: `${sum.potentialFindings} potential layout · ${sum.responsiveAdvisories} responsive advisory`,
+        icon: AlertOctagon,
+        tone: sum.confirmedLayoutIssues > 0 ? "warning" : "success",
+      },
+      {
+        label: "Site findings",
+        value: formatCount(site.siteWideFindings.length),
+        hint: "Open Reports for explorer and filters",
+        icon: Layers,
+        tone: site.siteWideFindings.length > 0 ? "warning" : "neutral",
+      },
+    ] as const;
+    const { host, rest } = displayUrl(site.rootUrl);
+    return (
+      <section aria-labelledby="summary-heading" className="summary">
+        <div className="section-head">
+          <h2 id="summary-heading" className="section-title">Latest site scan</h2>
+          <p className="section-meta">
+            <span className="mono">{host}{rest}</span> · {formatDateTime(site.scannedAt)}
+          </p>
+        </div>
+        <div className="stat-grid">
+          {items.map(({ label, value, hint, icon: Icon, tone }) => (
+            <Card key={label} className={`stat-card stat-${tone}`} as="div">
+              <div className="stat-top">
+                <span className="stat-label">{label}</span>
+                <Icon size={15} aria-hidden="true" className="stat-icon" />
+              </div>
+              <span className="stat-value" data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}>{value}</span>
+              <span className="stat-hint">{hint}</span>
+            </Card>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  const { report } = active as { report: JsonReport };
   const s = report.summary;
   const hasVisual = report.viewports.some((v) => v.visualCompare);
   const items = [

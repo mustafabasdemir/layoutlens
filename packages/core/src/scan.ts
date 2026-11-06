@@ -4,13 +4,14 @@ import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 import {
-  VIEWPORT_WIDTHS,
+  DEFAULT_VIEWPORT_SPECS,
   countAdvancedCategories,
   countClassifications,
   countSeverities,
   getViewportLabel,
   mergeInspectorConfig,
   mergeScanTimeouts,
+  mergeViewportSpecs,
   mergeVisualConfig,
   navigationQuality,
   urlForReport,
@@ -21,6 +22,7 @@ import {
   type ScanSummary,
   type ViewportFailurePhase,
   type ViewportScanResult,
+  type ViewportSpec,
 } from "@layoutlens/shared";
 import {
   computeDocumentOverflow,
@@ -41,8 +43,25 @@ import { waitForLoadOrRecover } from "./page-readiness.js";
 
 const DEFAULT_VIEWPORT_HEIGHT = 844;
 
+function resolveViewportSpecs(options: ScanOptions): ViewportSpec[] {
+  if (options.viewports && options.viewports.length > 0) {
+    return mergeViewportSpecs([...options.viewports]);
+  }
+  if (options.viewportHeight !== undefined) {
+    const h = options.viewportHeight;
+    return mergeViewportSpecs(
+      DEFAULT_VIEWPORT_SPECS.map((s) => ({
+        width: s.width,
+        height: h,
+        label: s.label,
+      })),
+    );
+  }
+  return mergeViewportSpecs();
+}
+
 function buildViewportResult(
-  width: (typeof VIEWPORT_WIDTHS)[number],
+  spec: ViewportSpec,
   viewportHeight: number,
   overflowData: Awaited<ReturnType<typeof detectHorizontalOverflow>>,
   responsiveData: Awaited<ReturnType<typeof detectResponsiveIssues>>,
@@ -51,6 +70,7 @@ function buildViewportResult(
     inspector?: import("@layoutlens/shared").InspectorSnapshot;
   },
 ): ViewportScanResult {
+  const width = spec.width;
   const docOverflow = computeDocumentOverflow(
     overflowData.documentScrollWidth,
     overflowData.documentClientWidth,
@@ -60,7 +80,7 @@ function buildViewportResult(
 
   const base: ViewportScanResult = {
     width,
-    label: getViewportLabel(width),
+    label: spec.label ?? getViewportLabel(width, viewportHeight),
     viewportHeight,
     documentScrollWidth: overflowData.documentScrollWidth,
     documentClientWidth: overflowData.documentClientWidth,
@@ -82,10 +102,11 @@ function buildViewportResult(
 
 /** Placeholder row when navigation did not commit — not a successful layout inspection. */
 function createSkippedViewport(
-  width: (typeof VIEWPORT_WIDTHS)[number],
+  spec: ViewportSpec,
   viewportHeight: number,
   reason: string,
 ): ViewportScanResult {
+  const width = spec.width;
   const analysis: import("@layoutlens/shared").ViewportAnalysis = {
     elementsInspected: 0,
     candidateCount: 0,
@@ -111,7 +132,7 @@ function createSkippedViewport(
   };
   return {
     width,
-    label: getViewportLabel(width),
+    label: spec.label ?? getViewportLabel(width, viewportHeight),
     viewportHeight,
     documentScrollWidth: width,
     documentClientWidth: width,
@@ -173,6 +194,7 @@ export function summarizeViewports(viewports: readonly ViewportScanResult[]): Om
       const msg = v.inspectionError?.message;
       return {
         width: v.width,
+        height: v.viewportHeight,
         label: v.label,
         status: st,
         ...(msg !== undefined ? { message: msg } : {}),
@@ -202,7 +224,6 @@ function classifyNavFailure(raw: string): { phase: ViewportFailurePhase; message
 export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
   const {
     url,
-    viewportHeight = DEFAULT_VIEWPORT_HEIGHT,
     headless = true,
     artifacts,
     baselineDirectory,
@@ -211,7 +232,19 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
     signal,
     detection,
     inspector: inspectorOpts,
+    mergePartialScan: mergePartialScanOpt,
+    retryViewportIndices,
   } = options;
+  const viewportSpecs = resolveViewportSpecs(options);
+  const retryOnlySet =
+    retryViewportIndices !== undefined && retryViewportIndices.length > 0
+      ? new Set(
+          retryViewportIndices.filter(
+            (i) => typeof i === "number" && Number.isInteger(i) && i >= 0 && i < viewportSpecs.length,
+          ),
+        )
+      : null;
+  const mergePartialScan = mergePartialScanOpt && retryOnlySet && retryOnlySet.size > 0 ? mergePartialScanOpt : undefined;
   const inspectorCfg = mergeInspectorConfig(inspectorOpts);
   const timeouts = mergeScanTimeouts(options.timeouts);
 
@@ -243,8 +276,8 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
   onProgress?.({ type: "browser-launched" });
 
   const viewports: ViewportScanResult[] = [];
-  let scanNavigation: ScanNavigation | undefined;
-  let navigationDiagnostics: ScanNavigationDiagnostics | undefined;
+  let scanNavigation: ScanNavigation | undefined = mergePartialScan?.navigation;
+  let navigationDiagnostics: ScanNavigationDiagnostics | undefined = mergePartialScan?.navigationDiagnostics;
   /** When true, `page.goto` never committed — remaining viewports are skipped. */
   let navigationFailedBeforeCommit = false;
   /** First viewport could not reach a usable document — skip resize passes. */
@@ -253,13 +286,86 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
+    const viewportTotal = viewportSpecs.length;
 
-    for (const [index, width] of VIEWPORT_WIDTHS.entries()) {
+    const minRetryIdx =
+      retryOnlySet && retryOnlySet.size > 0 ? Math.min(...retryOnlySet) : 0;
+    const v0Baseline = mergePartialScan?.viewports[0];
+    const v0Ok =
+      v0Baseline &&
+      (v0Baseline.inspectionStatus === "completed" || v0Baseline.inspectionStatus === undefined);
+    const needWarmNavigation =
+      Boolean(mergePartialScan && retryOnlySet && retryOnlySet.size > 0 && minRetryIdx > 0 && v0Ok);
+    if (needWarmNavigation) {
+      const v0 = viewportSpecs[0]!;
+      await page.setViewportSize({ width: v0.width, height: v0.height });
+      const navStart = Date.now();
+      let gotoResponse: import("playwright").Response | null = null;
+      try {
+        gotoResponse = await page.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: timeouts.navigationMs,
+        });
+      } catch (e: unknown) {
+        const raw = e instanceof Error ? e.message : String(e);
+        throw new Error(
+          `Cannot retry later viewports: initial navigation failed (${raw.split("\n")[0]?.slice(0, 120) ?? "error"}).`,
+        );
+      }
+      if (!navigationFailedBeforeCommit && gotoResponse) {
+        const lr = await waitForLoadOrRecover(page, {
+          readinessTimeoutMs: timeouts.readinessMs,
+          ...(signal ? { signal } : {}),
+        });
+        if (timeouts.postLoadSettleMs > 0) {
+          await page.waitForTimeout(timeouts.postLoadSettleMs);
+        }
+        scanNavigation = await buildScanNavigation(page, url, gotoResponse, true);
+        navigationDiagnostics = {
+          firstViewportWidth: v0.width,
+          firstViewportHeight: v0.height,
+          firstGotoWaitUntil: "domcontentloaded",
+          firstGotoDurationMs: Date.now() - navStart,
+          firstNavigationCommitted: true,
+          firstReadinessDurationMs: lr.durationWaitMs,
+          firstDomContentLoaded: lr.domContentLoadedFired,
+          firstLoadEvent: lr.loadFired,
+          firstEffectiveMilestone: lr.effectiveMilestone,
+          firstPartialReadinessRecovery: lr.recoveredPartialReadiness,
+          ...(lr.readinessNote ? { firstReadinessNote: lr.readinessNote } : {}),
+        };
+      }
+    }
+
+    for (const [index, spec] of viewportSpecs.entries()) {
       throwIfAborted(signal);
+      const width = spec.width;
+      const viewportHeight = spec.height;
+
+      const mergedVp = mergePartialScan?.viewports[index];
+      const reuseCompleted =
+        mergedVp !== undefined &&
+        Boolean(mergePartialScan) &&
+        (mergedVp.inspectionStatus === "completed" || mergedVp.inspectionStatus === undefined) &&
+        (!retryOnlySet || !retryOnlySet.has(index));
+      if (reuseCompleted) {
+        const baseline = mergedVp;
+        viewports.push(JSON.parse(JSON.stringify(baseline)) as ViewportScanResult);
+        onProgress?.({
+          type: "viewport-completed",
+          width,
+          height: viewportHeight,
+          index,
+          total: viewportTotal,
+          findingCount: baseline.findings.length,
+          status: "completed",
+        });
+        continue;
+      }
 
       if (navigationFailedBeforeCommit || skipRemainingViewports) {
         const skipped = createSkippedViewport(
-          width,
+          spec,
           viewportHeight,
           navigationFailedBeforeCommit
             ? "Skipped because the first navigation did not load a document."
@@ -269,8 +375,9 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         onProgress?.({
           type: "viewport-completed",
           width,
+          height: viewportHeight,
           index,
-          total: VIEWPORT_WIDTHS.length,
+          total: viewportTotal,
           findingCount: 0,
           status: "skipped",
           ...(skipped.inspectionError?.message !== undefined
@@ -280,7 +387,7 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         continue;
       }
 
-      onProgress?.({ type: "viewport-started", width, index, total: VIEWPORT_WIDTHS.length });
+      onProgress?.({ type: "viewport-started", width, height: viewportHeight, index, total: viewportTotal });
       await page.setViewportSize({ width, height: viewportHeight });
       if (index > 0) {
         await page.waitForTimeout(200);
@@ -315,13 +422,18 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
             message: raw.split("\n")[0]?.slice(0, 200) ?? "Navigation failed",
           };
           navigationFailedBeforeCommit = true;
-          const fail = createSkippedViewport(width, viewportHeight, raw.split("\n")[0]?.slice(0, 400) ?? "Navigation failed");
+          const fail = createSkippedViewport(
+            spec,
+            viewportHeight,
+            raw.split("\n")[0]?.slice(0, 400) ?? "Navigation failed",
+          );
           viewports.push(fail);
           onProgress?.({
             type: "viewport-completed",
             width,
+            height: viewportHeight,
             index,
-            total: VIEWPORT_WIDTHS.length,
+            total: viewportTotal,
             findingCount: 0,
             status: "skipped",
             ...(fail.inspectionError?.message !== undefined ? { message: fail.inspectionError.message } : {}),
@@ -342,6 +454,7 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         scanNavigation = await buildScanNavigation(page, url, gotoResponse, documentLoaded);
         navigationDiagnostics = {
           firstViewportWidth: width,
+          firstViewportHeight: viewportHeight,
           firstGotoWaitUntil: "domcontentloaded",
           firstGotoDurationMs: gotoMs,
           firstNavigationCommitted: true,
@@ -378,11 +491,11 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         !readinessWait.recoveredPartialReadiness
       ) {
         skipRemainingViewports = true;
-        const analysis = createSkippedViewport(width, viewportHeight, "").analysis;
-        const advancedAnalysis = createSkippedViewport(width, viewportHeight, "").advancedAnalysis!;
+        const analysis = createSkippedViewport(spec, viewportHeight, "").analysis;
+        const advancedAnalysis = createSkippedViewport(spec, viewportHeight, "").advancedAnalysis!;
         const failedVp: ViewportScanResult = {
           width,
-          label: getViewportLabel(width),
+          label: spec.label ?? getViewportLabel(width, viewportHeight),
           viewportHeight,
           documentScrollWidth: width,
           documentClientWidth: width,
@@ -407,6 +520,7 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         scanNavigation = await buildScanNavigation(page, url, gotoResponse, true);
         navigationDiagnostics = {
           firstViewportWidth: width,
+          firstViewportHeight: viewportHeight,
           firstGotoWaitUntil: "domcontentloaded",
           firstGotoDurationMs: gotoMs,
           firstNavigationCommitted: true,
@@ -420,8 +534,9 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         onProgress?.({
           type: "viewport-completed",
           width,
+          height: viewportHeight,
           index,
-          total: VIEWPORT_WIDTHS.length,
+          total: viewportTotal,
           findingCount: 0,
           status: "failed",
           ...(failedVp.inspectionError ? { message: failedVp.inspectionError.message } : {}),
@@ -456,7 +571,7 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         let screenshotTimedOut = false;
         if (workDir) {
           try {
-            screenshot = await captureViewportScreenshot(page, workDir, width, stability, {
+            screenshot = await captureViewportScreenshot(page, workDir, width, viewportHeight, stability, {
               skipStabilize: inspectorCfg.enabled,
               timeoutMs: timeouts.screenshotMs,
             });
@@ -472,7 +587,7 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         const extras: { screenshot?: string; inspector?: import("@layoutlens/shared").InspectorSnapshot } = {};
         if (screenshot !== undefined) extras.screenshot = screenshot;
         if (inspectorSnapshot !== undefined) extras.inspector = inspectorSnapshot;
-        const viewportResult = buildViewportResult(width, viewportHeight, overflowData, responsiveData, extras);
+        const viewportResult = buildViewportResult(spec, viewportHeight, overflowData, responsiveData, extras);
         viewportResult.inspection = {
           ...diagnosticsBase,
           screenshotCaptureMs: timeouts.screenshotMs,
@@ -482,8 +597,9 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         onProgress?.({
           type: "viewport-completed",
           width,
+          height: viewportHeight,
           index,
-          total: VIEWPORT_WIDTHS.length,
+          total: viewportTotal,
           findingCount: viewportResult.findings.length,
           status: "completed",
         });
@@ -494,11 +610,11 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
             ? (err as { phase: ViewportFailurePhase }).phase
             : classifyNavFailure(raw).phase;
         const message = raw.split("\n")[0]?.slice(0, 400) ?? "Viewport inspection failed";
-        const analysis = createSkippedViewport(width, viewportHeight, "").analysis;
-        const advancedAnalysis = createSkippedViewport(width, viewportHeight, "").advancedAnalysis!;
+        const analysis = createSkippedViewport(spec, viewportHeight, "").analysis;
+        const advancedAnalysis = createSkippedViewport(spec, viewportHeight, "").advancedAnalysis!;
         const failed: ViewportScanResult = {
           width,
-          label: getViewportLabel(width),
+          label: spec.label ?? getViewportLabel(width, viewportHeight),
           viewportHeight,
           documentScrollWidth: width,
           documentClientWidth: width,
@@ -518,8 +634,9 @@ export async function scanUrl(options: ScanOptions): Promise<ScanResult> {
         onProgress?.({
           type: "viewport-completed",
           width,
+          height: viewportHeight,
           index,
-          total: VIEWPORT_WIDTHS.length,
+          total: viewportTotal,
           findingCount: 0,
           status: "failed",
           message,

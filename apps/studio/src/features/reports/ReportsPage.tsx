@@ -1,9 +1,12 @@
 import { FolderOpen } from "lucide-react";
+import type { JsonReport } from "@layoutlens/shared";
 import { useReports } from "../../data/report-store";
+import { isLoadedSiteScan, isSiteScanEnvelope } from "../../data/load-report";
 import { displayUrl } from "../../lib/format";
 import { Button, Card, EmptyState, Notice } from "../../ui/primitives";
 import { ReportPicker } from "./ReportPicker";
 import { ReportWorkspace } from "./ReportWorkspace";
+import { SiteScanDashboard } from "./SiteScanDashboard";
 
 export function ReportLoadError() {
   const { error, dismissError } = useReports();
@@ -48,7 +51,8 @@ export function ReportsPage() {
                 <span className="select-label">Open reports</span>
                 <select value={active.id} onChange={(e) => setActive(e.target.value)} aria-label="Switch report">
                   {reports.map((r) => {
-                    const { host, rest } = displayUrl(r.report.url);
+                    const url = isSiteScanEnvelope(r.report) ? r.report.rootUrl : (r.report as JsonReport).url;
+                    const { host, rest } = displayUrl(url);
                     return (
                       <option key={r.id} value={r.id}>
                         {host}{rest} — {r.sourceName}
@@ -62,7 +66,11 @@ export function ReportsPage() {
             )}
             <ReportPicker compact goToReports={false} />
           </div>
-          <ReportWorkspace loaded={active} onClose={() => closeReport(active.id)} />
+          {isLoadedSiteScan(active) ? (
+            <SiteScanDashboard loaded={active} site={active.report} onClose={() => closeReport(active.id)} />
+          ) : (
+            <ReportWorkspace key={active.id} loaded={active} onClose={() => closeReport(active.id)} />
+          )}
         </>
       )}
     </div>

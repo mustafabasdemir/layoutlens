@@ -1014,7 +1014,7 @@ ${designTokensCss()}
           }
           var fi = Number(box.dataset.findingIndex);
           var vp = report.viewports[Number(box.dataset.vpIndex)];
-          var f = vp.findings[fi];
+          var f = (vp.findings || [])[fi];
           var showSev = state.severity === "all" || state.severity === f.severity;
           var showEv = state.evidence === "all" || state.evidence === evidenceOf(f);
           box.style.display = showSev && showEv ? "block" : "none";

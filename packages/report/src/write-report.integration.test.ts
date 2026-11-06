@@ -34,17 +34,20 @@ describe("HTML report e2e", () => {
       const { indexPath } = await writeHtmlReportBundle(result, dir);
       const html = await readFile(indexPath, "utf8");
       assertOfflineHtml(html);
-      expect(html).toContain(viewportScreenshotRelativePath(390));
+      const mobile = result.viewports.find((v) => v.width === 390);
+      const mobileShot = mobile?.screenshot;
+      expect(mobileShot).toBeDefined();
+      expect(html).toContain(mobileShot!);
       await access(join(dir, HTML_REPORT_INDEX));
       await access(join(dir, "report.json"));
 
       const parsed = JSON.parse(await readFile(join(dir, "report.json"), "utf8")) as {
         schemaVersion: string;
-        viewports: Array<{ screenshot?: string }>;
+        viewports: Array<{ screenshot?: string; viewportHeight: number }>;
       };
       expect(parsed.schemaVersion).toBe("1.3");
       expect(parsed.viewports[0]?.screenshot).toBe(
-        viewportScreenshotRelativePath(390),
+        viewportScreenshotRelativePath(390, parsed.viewports[0]!.viewportHeight),
       );
     },
     90_000,
