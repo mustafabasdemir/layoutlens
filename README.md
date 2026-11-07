@@ -2,35 +2,83 @@
 
 **Catch broken layouts before your users do.**
 
-LayoutLens is a **local-first** developer tool that uses **Chromium (Playwright)** to scan web pages at standard responsive widths, detect **horizontal overflow** with **evidence-based classification**, optional **advanced responsive advisories**, **per-viewport screenshots**, and optional **visual regression** against saved baselines. Reports work offline; there is **no cloud account, API keys, or telemetry**.
+LayoutLens is a **local-first** developer tool that uses **Chromium (Playwright)** to scan web pages—and, via **LayoutLens Studio**, **same-origin multi-page sites**—at responsive widths. It detects **horizontal overflow** with **evidence-based classification**, optional **advanced responsive advisories**, **per-viewport screenshots**, optional **visual regression** against saved baselines, and **offline HTML reports**. There is **no cloud account, API keys, or telemetry**.
 
 **Documentation:** [English](README.md) · [Türkçe](docs/README.tr.md)
 
 ---
 
-![LayoutLens Studio — scan summary and findings (weather.gov, mobile viewport)](docs/readme-weather-gov-studio.png)
+![LayoutLens Studio — Multi-page website scanning and site-wide dashboard](docs/readme-site-overview.png)
 
-*Public website scan used as a UI example; third-party sites and results may change.*
+*Real Studio run on [weather.gov](https://www.weather.gov): **10 pages**, **30 viewport inspections**, site-wide summary, and Page Explorer. Third-party sites and results may change.*
 
 ---
 
 ## Key features
 
-- **Chromium-based inspection** — Real headless browser measurement, not static HTML guessing.
-- **Evidence-based overflow detection** — Classifications such as confirmed vs potential, excluded groups (e.g. carousels) with reasons, and **visible-only overlays** when content is partly clipped.
-- **Responsive layout advisories** — Separate **advanced** findings (overlap, text clipping, offscreen controls, touch targets) in JSON and Studio; **horizontal overflow exit semantics** remain primary.
-- **Interactive DOM Inspector (Studio)** — After a scan, pick elements on the screenshot and inspect selector paths and related context (when inspector snapshots are present).
-- **Offline HTML reports** — Self-contained bundles with screenshots, filters, and **inspector** UI where data is included (see screenshot tools in generated `index.html`).
-- **Visual regression** — Optional **pixelmatch** comparison vs a baseline directory (`layoutlens baseline create|update`).
-- **HTTP and navigation awareness** — Summary reflects response status, redirects, and trust hints; does not treat error pages as a “clean” layout proof.
-- **Navigation reliability (Phase 9.x)** — Separate timeouts for navigation, load readiness, and screenshots; bounded recovery when the document is usable but load never settles; **per-viewport** success/failure/skipped status.
-- **Privacy** — Runs on your machine; scan output stays under your chosen data directory.
+### Multi-page website scanning
 
----
+Start from a single URL and discover pages within the **same origin**, with **bounded** crawl limits (Studio defaults such as **up to 10 pages** and a configurable **max depth**—not an unlimited spider). Each page gets full viewport inspection, screenshots, and a per-page report.
+
+### Site-wide dashboard
+
+See **completed vs failed pages**, **viewport task progress**, **confirmed and potential layout findings**, **responsive advisories**, and **navigation quality** in one panel after a site scan finishes.
+
+### Page Explorer
+
+Browse every scanned page in a table: status, finding counts, affected viewports, screenshot preview, **Open report** (per-page workspace), and **Retry page** when a failure is eligible.
+
+### Responsive overflow detection
+
+Horizontal overflow and contributing DOM elements are measured in a real Chromium session—not static HTML guesses.
+
+![LayoutLens Studio — scan summary and findings (weather.gov, mobile viewport)](docs/readme-weather-gov-studio.png)
+
+*Example single-page viewport: overflow findings and classification on a public site.*
+
+### Evidence-based classification
+
+Findings are labeled (e.g. **confirmed** vs **potential** vs insufficient evidence). Excluded patterns—such as carousels—include reasons. Overlays respect **visible geometry** when content is partly clipped.
+
+### Advanced responsive advisories
+
+Beyond horizontal overflow, reports can include **overlap**, **text clipping**, **offscreen controls**, and **touch target** issues as separate advanced findings in JSON and Studio.
+
+### Interactive DOM Inspector
+
+After a scan, pick elements on the screenshot and inspect selector paths, geometry, and captured CSS context when inspector snapshots are present.
 
 ![LayoutLens Studio — pointer-based element selection in Inspector mode (weather.gov)](docs/readme-weather-gov-inspector.png)
 
 *Inspector: select elements on the captured viewport and inspect DOM/selector context.*
+
+### Custom viewports
+
+Configure viewport **width and height** per scan in Studio (e.g. mobile, tablet, desktop presets or custom sizes). Reports record non-default dimensions in schema **1.4** when needed.
+
+### Live scan progress
+
+Studio shows **real progress** for site scans: discovery, per-page work, and **per-viewport** tasks—not a fake progress bar.
+
+### Cancel & retry
+
+**Cancel** an in-flight scan or site retry from Studio. **Retry** failed **page** or **viewport** tasks when policy allows (HTTP **403** / permanent errors are not auto-retried; attempts are **bounded** per task).
+
+### Offline HTML reports
+
+Self-contained bundles (`index.html`, screenshots, `report.json`) work without a server or CDN for single-page runs; multi-page site envelopes use `layoutlens-site` JSON on disk and in Studio.
+
+### Visual regression
+
+Optional **pixelmatch** comparison vs a saved baseline (`layoutlens baseline create|update`), with diff views in Studio and HTML reports.
+
+### Reliable navigation
+
+Summaries reflect HTTP status, redirects, and trust hints. Separate timeouts for navigation, readiness, and screenshots; bounded recovery when the document is usable but `load` is slow; **per-viewport** success, failure, or skipped status.
+
+### Local-first & privacy
+
+Runs on your machine. Scan output stays under your chosen data directory (default **`.layoutlens/`**, typically gitignored). **No** mandatory cloud, signup, shipped API keys, or telemetry in this repository.
 
 ---
 
@@ -78,9 +126,11 @@ Entrypoint: `layoutlens` (see `packages/cli/src/index.ts`, version **0.4.0**).
 
 | Command | Purpose |
 |---------|---------|
-| `scan <url>` | Scan a single page (`http`, `https`, or `file:`) |
+| `scan <url>` | Scan a **single** page (`http`, `https`, or `file:`) |
 | `baseline create <url>` | Create a visual baseline (requires `--baseline-dir`) |
 | `baseline update <url>` | Update baseline when URL matches manifest |
+
+Multi-page **site** scanning is available through **LayoutLens Studio** and the local scan API (`mode: multi_page`), not the CLI `scan` subcommand today.
 
 **`scan` options (representative)**
 
@@ -116,6 +166,10 @@ Open `layoutlens-report/index.html` in a browser — no CDN required for the bun
 ## LayoutLens Studio
 
 Local React + Vite UI (`apps/studio`), wired to a **loopback-only** scan API (`@layoutlens/server`).
+
+- **Single-page scan** — Enter a URL; inspect findings, screenshots, inspector, and visual regression per report.
+- **Multi-page site scan** — Choose multi-page mode, set **max pages** (default cap such as **10**) and **crawl depth**, optionally customize viewports, then open the **site-wide dashboard** and **Page Explorer** when the run completes.
+- **Cancel / retry** — Stop long runs; retry eligible failed pages or viewports from the dashboard (subject to server limits).
 
 **Development (from repo root):**
 
@@ -182,7 +236,7 @@ Scans use **`domcontentloaded`** for initial navigation, then a **readiness** ph
 
 ## Reports and CLI exit codes
 
-- **JSON** reports include `schemaVersion` (e.g. **1.3** for Phase 9.2.1 fields), `summary`, `viewports[]`, optional `navigation`, `navigationDiagnostics`, and inspector snapshots when captured.
+- **JSON** reports include `schemaVersion` (e.g. **1.3** / **1.4**), `summary`, `viewports[]`, optional `navigation`, `navigationDiagnostics`, and inspector snapshots when captured. Site scans add `tool: layoutlens-site` with `pages[]` and site-wide findings.
 - **`exitCodeForResult`** (`packages/cli/src/format.ts`):
   - **0** — No horizontal overflow issues, no visual regression failures, navigation does not block trust, and the scan **fully** completed all viewports (no partial/skipped/failed inspection counts).
   - **1** — Layout and/or visual differences, **or** HTTP/navigation conditions treated as issues, **or** **partial / failed** viewport inspection.
@@ -196,13 +250,13 @@ Monorepo (pnpm workspaces):
 
 | Package / app | Role |
 |---------------|------|
-| `packages/shared` | Types, report schema, classification, inspector and navigation helpers |
-| `packages/core` | Playwright scanner, overflow and responsive analysis, screenshots |
+| `packages/shared` | Types, report schema, classification, inspector and navigation helpers, site-scan schema |
+| `packages/core` | Playwright scanner, overflow and responsive analysis, screenshots, **site crawl (`scanSite`)** |
 | `packages/visual` | Baselines, pixelmatch compare, masks |
 | `packages/report` | Offline HTML report generator |
-| `packages/cli` | Commander CLI |
-| `packages/server` | Local scan API + static Studio serving |
-| `apps/studio` | LayoutLens Studio UI |
+| `packages/cli` | Commander CLI (single-page `scan`) |
+| `packages/server` | Local scan API, multi-page jobs, retry/cancel, static Studio serving |
+| `apps/studio` | LayoutLens Studio UI (single-page + site dashboard) |
 | `examples/` | Demos and HTML fixtures for tests (`broken-layout`, `layout-cases`, `responsive-cases`, etc.) |
 
 ---
@@ -227,21 +281,6 @@ pnpm browser:install
 
 ---
 
-## Roadmap
-
-**Planned (Phase 10 — not implemented in this README’s feature set):**
-
-- Multi-page website scanning (same-origin, bounded crawl)
-- Site-wide Studio dashboard
-- Deeper real-time progress for multi-step runs
-- Cancellation / retry orchestration for multi-page workflows
-- Custom viewport configuration in product UI
-
-No release dates are committed here.
-
----
-
 ## Contributing
 
 Issues and pull requests are welcome. Please run `pnpm lint` and `pnpm test` before submitting substantial changes.
-
